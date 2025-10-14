@@ -1,0 +1,280 @@
+
+import React, { useState, useEffect, useCallback } from "react";
+import { Client, Quote, Sample } from "@/api/entities";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Plus,
+  Search,
+  Building2,
+  Mail,
+  Phone,
+  MapPin,
+  Eye,
+  Edit,
+  BarChart3,
+  Users
+} from "lucide-react";
+
+import ClientForm from "../components/clients/ClientForm";
+import ClientDetails from "../components/clients/ClientDetails";
+
+const clientTypeConfig = {
+  empresa: { label: "Empresa", color: "bg-blue-100 text-blue-800" },
+  particular: { label: "Particular", color: "bg-green-100 text-green-800" },
+  gobierno: { label: "Gobierno", color: "bg-purple-100 text-purple-800" },
+  investigacion: { label: "Investigación", color: "bg-orange-100 text-orange-800" }
+};
+
+export default function ClientsPage() {
+  const [clients, setClients] = useState([]);
+  const [filteredClients, setFilteredClients] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [clientStats, setClientStats] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  const applyFilters = useCallback(() => {
+    let filtered = clients;
+    
+    if (searchTerm) {
+      filtered = filtered.filter(client => 
+        client.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.company?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    setFilteredClients(filtered);
+  }, [clients, searchTerm]);
+
+  useEffect(() => {
+    loadClients();
+  }, []);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
+  const loadClients = async () => {
+    setIsLoading(true);
+    try {
+      const [clientsData, quotesData, samplesData] = await Promise.all([
+        Client.list('-created_date'),
+        Quote.list(),
+        Sample.list()
+      ]);
+      
+      setClients(clientsData);
+      
+      // Calcular estadísticas por cliente
+      const stats = {};
+      clientsData.forEach(client => {
+        stats[client.id] = {
+          quotes: quotesData.filter(q => q.client_id === client.id).length,
+          samples: samplesData.filter(s => s.client_id === client.id).length
+        };
+      });
+      setClientStats(stats);
+      
+    } catch (error) {
+      console.error("Error loading clients:", error);
+    }
+    setIsLoading(false);
+  };
+
+  const handleClientSubmit = async (clientData) => {
+    try {
+      if (selectedClient) {
+        await Client.update(selectedClient.id, clientData);
+      } else {
+        await Client.create(clientData);
+      }
+      setShowForm(false);
+      setSelectedClient(null);
+      loadClients();
+    } catch (error) {
+      console.error("Error saving client:", error);
+    }
+  };
+
+  const handleViewDetails = (client) => {
+    setSelectedClient(client);
+  };
+
+  const handleEditClient = (client) => {
+    setSelectedClient(client);
+    setShowForm(true);
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Gestión de Clientes</h1>
+          <p className="text-gray-600">Administra tu cartera de clientes y su historial</p>
+        </div>
+        <Button 
+          onClick={() => setShowForm(true)}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Nuevo Cliente
+        </Button>
+      </div>
+
+      {/* Barra de búsqueda */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Input
+          placeholder="Buscar por nombre, empresa o email..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {/* Lista de clientes */}
+      <div className="grid gap-4">
+        {isLoading ? (
+          Array(5).fill(0).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
+                    <div className="space-y-2">
+                      <div className="h-4 bg-gray-200 rounded w-48"></div>
+                      <div className="h-3 bg-gray-200 rounded w-32"></div>
+                    </div>
+                  </div>
+                  <div className="w-20 h-6 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        ) : filteredClients.length === 0 ? (
+          <Card>
+            <CardContent className="text-center py-12">
+              <Users className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No hay clientes</h3>
+              <p className="text-gray-600 mb-4">
+                {searchTerm 
+                  ? "No se encontraron clientes que coincidan con la búsqueda"
+                  : "Comienza registrando tu primer cliente"}
+              </p>
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Nuevo Cliente
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          filteredClients.map((client) => (
+            <Card key={client.id} className="hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center">
+                      <Building2 className="w-6 h-6 text-blue-600" />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {client.name}
+                        </h3>
+                        <Badge className={`${clientTypeConfig[client.client_type]?.color || clientTypeConfig.empresa.color} border`}>
+                          {clientTypeConfig[client.client_type]?.label || "Empresa"}
+                        </Badge>
+                        {client.status === 'inactivo' && (
+                          <Badge variant="secondary">
+                            Inactivo
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-4 text-sm text-gray-600">
+                        {client.company && (
+                          <div className="flex items-center gap-1">
+                            <Building2 className="w-4 h-4" />
+                            <span>{client.company}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <Mail className="w-4 h-4" />
+                          <span>{client.email}</span>
+                        </div>
+                        {client.phone && (
+                          <div className="flex items-center gap-1">
+                            <Phone className="w-4 h-4" />
+                            <span>{client.phone}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Estadísticas */}
+                      <div className="flex items-center gap-4 text-sm text-gray-500 mt-2">
+                        <div className="flex items-center gap-1">
+                          <BarChart3 className="w-4 h-4" />
+                          <span>{clientStats[client.id]?.quotes || 0} cotizaciones</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span>{clientStats[client.id]?.samples || 0} muestras</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleViewDetails(client)}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      Ver
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditClient(client)}
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Editar
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Modal de formulario */}
+      {showForm && (
+        <ClientForm
+          client={selectedClient}
+          onSubmit={handleClientSubmit}
+          onCancel={() => {
+            setShowForm(false);
+            setSelectedClient(null);
+          }}
+        />
+      )}
+
+      {/* Modal de detalles */}
+      {selectedClient && !showForm && (
+        <ClientDetails
+          client={selectedClient}
+          stats={clientStats[selectedClient.id]}
+          onEdit={() => setShowForm(true)}
+          onClose={() => setSelectedClient(null)}
+        />
+      )}
+    </div>
+  );
+}
