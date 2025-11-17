@@ -16,10 +16,10 @@ import {
   Package
 } from "lucide-react";
 
-import AnalysisForm from "../components/analysis/AnalysisForm";
-import AnalysisDetails from "../components/analysis/AnalysisDetails";
-import TemplateForm from "../components/analysis/TemplateForm";
-import TemplateDetails from "../components/analysis/TemplateDetails";
+import AnalysisForm from "../components/procedures/AnalysisForm";
+import AnalysisDetails from "../components/procedures/AnalysisDetails";
+import TemplateForm from "../components/procedures/TemplateForm";
+import TemplateDetails from "../components/procedures/TemplateDetails";
 
 const categoryConfig = {
   microbiologico: { color: "bg-green-100 text-green-800", label: "Microbiológico" },

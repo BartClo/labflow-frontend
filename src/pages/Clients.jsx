@@ -15,11 +15,14 @@ import {
   Eye,
   Edit,
   BarChart3,
-  Users
+  Users,
+  Trash2
 } from "lucide-react";
 
 import ClientForm from "../components/clients/ClientForm";
 import ClientDetails from "../components/clients/ClientDetails";
+import ConfirmDialog from "../components/ui/confirm-dialog";
+import NotificationDialog from "../components/ui/notification-dialog";
 
 const clientTypeConfig = {
   empresa: { label: "Empresa", color: "bg-blue-100 text-blue-800" },
@@ -36,6 +39,16 @@ export default function ClientsPage() {
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientStats, setClientStats] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const [confirmDialog, setConfirmDialog] = useState({
+    isOpen: false,
+    client: null
+  });
+  const [notification, setNotification] = useState({
+    isOpen: false,
+    type: 'info',
+    title: '',
+    message: ''
+  });
 
   const applyFilters = useCallback(() => {
     let filtered = clients;
@@ -62,20 +75,17 @@ export default function ClientsPage() {
   const loadClients = async () => {
     setIsLoading(true);
     try {
-      const [clientsData, quotesData, samplesData] = await Promise.all([
-        Client.list('-created_date'),
-        Quote.list(),
-        Sample.list()
-      ]);
+      // Only load clients for now - quotes and samples endpoints need to be implemented in backend
+      const clientsData = await Client.list('-created_date');
       
       setClients(clientsData);
       
-      // Calcular estadísticas por cliente
+      // Initialize empty stats - will be populated when quotes/samples endpoints are available
       const stats = {};
       clientsData.forEach(client => {
         stats[client.id] = {
-          quotes: quotesData.filter(q => q.client_id === client.id).length,
-          samples: samplesData.filter(s => s.client_id === client.id).length
+          quotes: 0, // Will be populated when quotes endpoint is available
+          samples: 0 // Will be populated when samples endpoint is available
         };
       });
       setClientStats(stats);
@@ -88,16 +98,35 @@ export default function ClientsPage() {
 
   const handleClientSubmit = async (clientData) => {
     try {
+      // Map frontend form data to backend DTO format
+      const backendData = {
+        nombreCliente: clientData.name || clientData.nombreCliente
+      };
+      
+      let result;
       if (selectedClient) {
-        await Client.update(selectedClient.id, clientData);
+        result = await Client.update(selectedClient.id, backendData);
+        console.log('Cliente actualizado:', result);
       } else {
-        await Client.create(clientData);
+        result = await Client.create(backendData);
+        console.log('Cliente creado:', result);
       }
+      
       setShowForm(false);
       setSelectedClient(null);
       loadClients();
+      
+      // Show success notification
+      const successMessage = selectedClient ? 'Cliente actualizado correctamente' : 'Cliente creado correctamente';
+      const successTitle = selectedClient ? 'Cliente Actualizado' : 'Cliente Creado';
+      showNotification('success', successTitle, successMessage);
+      
     } catch (error) {
       console.error("Error saving client:", error);
+      
+      // Show error notification
+      const errorMessage = error.response?.data?.message || error.message || 'Error al guardar cliente';
+      showNotification('error', 'Error', errorMessage);
     }
   };
 
@@ -108,6 +137,61 @@ export default function ClientsPage() {
   const handleEditClient = (client) => {
     setSelectedClient(client);
     setShowForm(true);
+  };
+
+  const handleDeleteClient = (client) => {
+    // Show custom confirmation dialog
+    setConfirmDialog({
+      isOpen: true,
+      client: client
+    });
+  };
+
+  const confirmDeleteClient = async () => {
+    const client = confirmDialog.client;
+    
+    // Close dialog first
+    setConfirmDialog({ isOpen: false, client: null });
+
+    try {
+      await Client.delete(client.id);
+      console.log('Cliente eliminado:', client.name);
+      
+      // Reload the clients list
+      loadClients();
+      
+      // Show success notification
+      showNotification('success', 'Cliente Eliminado', 'Cliente eliminado correctamente');
+      
+    } catch (error) {
+      console.error("Error deleting client:", error);
+      
+      // Show error notification
+      const errorMessage = error.response?.data?.message || error.message || 'Error al eliminar cliente';
+      showNotification('error', 'Error', errorMessage);
+    }
+  };
+
+  const cancelDeleteClient = () => {
+    setConfirmDialog({ isOpen: false, client: null });
+  };
+
+  const showNotification = (type, title, message) => {
+    setNotification({
+      isOpen: true,
+      type,
+      title,
+      message
+    });
+  };
+
+  const closeNotification = () => {
+    setNotification({
+      isOpen: false,
+      type: 'info',
+      title: '',
+      message: ''
+    });
   };
 
   return (
@@ -166,10 +250,6 @@ export default function ClientsPage() {
                   ? "No se encontraron clientes que coincidan con la búsqueda"
                   : "Comienza registrando tu primer cliente"}
               </p>
-              <Button onClick={() => setShowForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nuevo Cliente
-              </Button>
             </CardContent>
           </Card>
         ) : (
@@ -246,6 +326,15 @@ export default function ClientsPage() {
                       <Edit className="w-4 h-4 mr-2" />
                       Editar
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteClient(client)}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Eliminar
+                    </Button>
                   </div>
                 </div>
               </CardContent>
@@ -275,6 +364,30 @@ export default function ClientsPage() {
           onClose={() => setSelectedClient(null)}
         />
       )}
+
+      {/* Diálogo de confirmación para eliminar */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title="Eliminar Cliente"
+        message={confirmDialog.client ? 
+          `¿Estás seguro de que deseas eliminar al cliente "${confirmDialog.client.name}"?\n\nEsta acción no se puede deshacer.` : 
+          ''
+        }
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        type="danger"
+        onConfirm={confirmDeleteClient}
+        onCancel={cancelDeleteClient}
+      />
+
+      {/* Diálogo de notificaciones */}
+      <NotificationDialog
+        isOpen={notification.isOpen}
+        type={notification.type}
+        title={notification.title}
+        message={notification.message}
+        onClose={closeNotification}
+      />
     </div>
   );
 }

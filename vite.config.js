@@ -6,7 +6,19 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: true
+
+    // proxy para no pegarle directamente al backend todo se maneja llamando /api
+        proxy: {
+      '/api': {
+        target: 'http://localhost:8080',   //backend Spring Boot
+        changeOrigin: true,
+        secure: false,
+        // Preserve the `/api` prefix so requests like `/api/clientes` are
+        // forwarded to `http://localhost:8080/api/clientes` (backend uses /api/*)
+        rewrite: (path) => path
+      }
+    }
+
   },
   resolve: {
     alias: {

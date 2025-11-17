@@ -1,23 +1,68 @@
-import { base44 } from './base44Client';
+/**
+ * API Integrations
+ * 
+ * Provides integration services for email, file handling, AI, etc.
+ */
 
+import apiClient from './client';
+import { filesService } from './services';
 
+// Email service
+export const SendEmail = async (emailData) => {
+  const response = await apiClient.post('/integrations/email/send', emailData);
+  return response.data;
+};
 
+// File upload (delegates to filesService)
+export const UploadFile = async (file, metadata = {}) => {
+  return filesService.upload(file, metadata);
+};
 
-export const Core = base44.integrations.Core;
+// Private file upload
+export const UploadPrivateFile = async (file, metadata = {}) => {
+  const privateMetadata = { ...metadata, isPrivate: true };
+  return filesService.upload(file, privateMetadata);
+};
 
-export const InvokeLLM = base44.integrations.Core.InvokeLLM;
+// Create signed URL for file access
+export const CreateFileSignedUrl = async (fileId, expiresIn = 3600) => {
+  return filesService.getSignedUrl(fileId, expiresIn);
+};
 
-export const SendEmail = base44.integrations.Core.SendEmail;
+// AI/LLM integration
+export const InvokeLLM = async (prompt, options = {}) => {
+  const response = await apiClient.post('/integrations/ai/invoke', {
+    prompt,
+    ...options,
+  });
+  return response.data;
+};
 
-export const UploadFile = base44.integrations.Core.UploadFile;
+// Image generation
+export const GenerateImage = async (prompt, options = {}) => {
+  const response = await apiClient.post('/integrations/ai/generate-image', {
+    prompt,
+    ...options,
+  });
+  return response.data;
+};
 
-export const GenerateImage = base44.integrations.Core.GenerateImage;
+// Extract data from uploaded files (OCR, PDF parsing, etc.)
+export const ExtractDataFromUploadedFile = async (fileId, options = {}) => {
+  const response = await apiClient.post(`/integrations/files/${fileId}/extract`, options);
+  return response.data;
+};
 
-export const ExtractDataFromUploadedFile = base44.integrations.Core.ExtractDataFromUploadedFile;
-
-export const CreateFileSignedUrl = base44.integrations.Core.CreateFileSignedUrl;
-
-export const UploadPrivateFile = base44.integrations.Core.UploadPrivateFile;
+// Core integrations object for backward compatibility
+export const Core = {
+  InvokeLLM,
+  SendEmail,
+  UploadFile,
+  GenerateImage,
+  ExtractDataFromUploadedFile,
+  CreateFileSignedUrl,
+  UploadPrivateFile,
+};
 
 
 

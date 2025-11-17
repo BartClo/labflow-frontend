@@ -1,21 +1,39 @@
-import { base44 } from './base44Client';
+/**
+ * API Entities/Services Export
+ * 
+ * This file exports all API services for backward compatibility
+ * and easier migration from base44 to custom backend
+ */
 
+import {
+  authService,
+  clientsService,
+  samplesService,
+  workOrdersService,
+  workflowsService,
+  analysisService,
+  analysisTemplatesService,
+  quotesService,
+} from './services';
 
-export const Client = base44.entities.Client;
+// Export services with backward-compatible names
+export const Client = clientsService;
+export const Quote = quotesService;
+export const Sample = samplesService;
+export const WorkOrder = workOrdersService;
+export const WorkflowStep = workflowsService;
+export const Analysis = analysisService;
+export const AnalysisTemplate = analysisTemplatesService;
+export const User = authService;
 
-export const Quote = base44.entities.Quote;
-
-export const Sample = base44.entities.Sample;
-
-export const WorkOrder = base44.entities.WorkOrder;
-
-export const WorkflowStep = base44.entities.WorkflowStep;
-
-export const Analysis = base44.entities.Analysis;
-
-export const AnalysisTemplate = base44.entities.AnalysisTemplate;
-
-
-
-// auth sdk:
-export const User = base44.auth;
+// Also export the services directly
+export {
+  authService,
+  clientsService,
+  samplesService,
+  workOrdersService,
+  workflowsService,
+  analysisService,
+  analysisTemplatesService,
+  quotesService,
+};

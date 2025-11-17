@@ -224,10 +224,6 @@ export default function SamplesPage() {
                   ? "No se encontraron muestras que coincidan con la búsqueda"
                   : "Comienza registrando tu primera muestra"}
               </p>
-              <Button onClick={() => setShowForm(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Nueva Muestra
-              </Button>
             </CardContent>
           </Card>
         ) : (
