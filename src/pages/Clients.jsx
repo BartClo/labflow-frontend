@@ -100,7 +100,14 @@ export default function ClientsPage() {
     try {
       // Map frontend form data to backend DTO format
       const backendData = {
-        nombreCliente: clientData.name || clientData.nombreCliente
+        nombreCliente: clientData.name || clientData.nombreCliente,
+        empresa: clientData.company || '',
+        email: clientData.email || '',
+        telefono: clientData.phone || '',
+        direccion: clientData.address || '',
+        personaContacto: clientData.contact_person || '',
+        tipoCliente: clientData.client_type || '',
+        activo: clientData.status === 'activo'
       };
       
       let result;

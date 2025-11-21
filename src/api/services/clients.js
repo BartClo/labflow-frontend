@@ -72,7 +72,28 @@ function mapClientDTOToModel(dto) {
   return {
     id: dto.idCliente || dto.id || null,
     name: dto.nombreCliente || dto.name || '',
+    company: dto.empresa || dto.company || '',
+    email: dto.email || '',
+    phone: dto.telefono || dto.phone || '',
+    address: dto.direccion || dto.address || '',
+    contact_person: dto.personaContacto || dto.contact_person || '',
+    client_type: dto.tipoCliente || dto.client_type || '',
+    status: dto.activo ? 'activo' : 'inactivo',
     // Keep additional raw fields if present for future use
     raw: dto,
   };
 }
+
+
+
+// {
+//   "nombreCliente": "Juan Pérez",
+//   "nombre": "Juan Pérez",
+//   "empresa": "Empresa ABC S.A.",
+//   "email": "contacto@empresaabc.com",
+//   "telefono": "+56 9 1234 5678",
+//   "direccion": "Av. Principal 123, Santiago",
+//   "personaContacto": "María González",
+//   "tipoCliente": "Empresa",
+//   "activo": true
+// }

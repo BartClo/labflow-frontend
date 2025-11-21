@@ -172,13 +172,15 @@ export default function Layout({ children, currentPageName }) {
               <div className="flex items-center gap-4">
                 <SidebarTrigger className="md:hidden hover:bg-gray-100 p-2 rounded-lg transition-colors duration-200" />
                 <div className="hidden md:flex items-center gap-4">
-                  <div className="relative">
+                  
+                  {/* <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <Input 
                       placeholder="Buscar muestras, OT, clientes..." 
                       className="pl-10 w-80 border-gray-300 focus:border-blue-500"
                     />
-                  </div>
+                  </div> */}
+                  
                 </div>
               </div>
               
