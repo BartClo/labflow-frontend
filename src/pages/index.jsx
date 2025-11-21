@@ -1,4 +1,5 @@
 import Layout from "./Layout.jsx";
+import Login from "./Login.jsx";
 
 import Dashboard from "./Dashboard";
 
@@ -14,7 +15,8 @@ import Procedures from "./Procedures";
 
 import OTGeneration from "./OTGeneration";
 
-import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'react-router-dom';
+import { useAuth } from "@/context/AuthContext";
 
 const PAGES = {
     
@@ -50,8 +52,35 @@ function _getCurrentPage(url) {
 // Create a wrapper component that uses useLocation inside the Router context
 function PagesContent() {
     const location = useLocation();
+    const { isAuthenticated, loading } = useAuth();
     const currentPage = _getCurrentPage(location.pathname);
     
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center h-screen bg-gray-50">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p className="text-gray-600">Cargando...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // If not authenticated, show login page
+    if (!isAuthenticated && location.pathname !== '/login') {
+      return <Navigate to="/login" replace />;
+    }
+
+    // If authenticated and trying to access login, redirect to dashboard
+    if (isAuthenticated && location.pathname === '/login') {
+      return <Navigate to="/Dashboard" replace />;
+    }
+    
+    // If on login page
+    if (location.pathname === '/login') {
+      return <Login />;
+    }
+
     return (
         <Layout currentPageName={currentPage}>
             <Routes>            

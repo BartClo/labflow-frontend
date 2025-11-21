@@ -1,15 +1,15 @@
-
-
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useAuth } from "@/context/AuthContext";
 import { 
   LayoutDashboard, 
   Users, 
   FlaskConical, 
   Settings,
   Bell,
-  Search
+  Search,
+  LogOut
 } from "lucide-react";
 import {
   Sidebar,
@@ -28,6 +28,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+import logo from "/assets/image/LabFlow.svg";
 
 const navigationItems = [
   {
@@ -59,6 +61,44 @@ const navigationItems = [
 
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    window.location.href = '/login';
+  };
+
+  // Get user initials
+  const getUserInitials = () => {
+    if (!user) return 'U';
+    const nombre = user.nombre || '';
+    const apellido = user.apellido || '';
+    if (nombre && apellido) {
+      return (nombre.charAt(0) + apellido.charAt(0)).toUpperCase();
+    }
+    return (nombre || user.email || 'U').charAt(0).toUpperCase();
+  };
+
+  // Get user display name
+  const getUserDisplayName = () => {
+    if (!user) return 'Usuario Lab';
+    const nombre = user.nombre || '';
+    const apellido = user.apellido || '';
+    if (nombre && apellido) {
+      return `${nombre} ${apellido}`;
+    }
+    return nombre || user.username || user.email || 'Usuario Lab';
+  };
+
+  // Get user role
+  const getUserRole = () => {
+    if (!user) return 'Usuario';
+    // Check if rol is an object with nombre property or just a string
+    if (user.rol) {
+      return user.rol.nombre || user.rol.name || user.rol || 'Usuario';
+    }
+    return user.role || 'Usuario';
+  };
 
   return (
     <SidebarProvider>
@@ -84,11 +124,12 @@ export default function Layout({ children, currentPageName }) {
         <Sidebar className="border-r border-gray-200 bg-white">
           <SidebarHeader className="border-b border-gray-100 p-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
-                <FlaskConical className="w-6 h-6 text-white" />
-              </div>
+              <div className="w-10 h-10 flex items-center justify-center">
+                <img src={logo} alt="LabFlow Logo" className="w-10 h-10" />
+              </div> 
               <div>
-                <h2 className="font-bold text-gray-900 text-lg">LabManager</h2>
+                
+                <h2 className="font-bold text-gray-900 text-lg">LabFlow</h2>
                 <p className="text-xs text-gray-500 font-medium">Sistema LIMS</p>
               </div>
             </div>
@@ -152,15 +193,19 @@ export default function Layout({ children, currentPageName }) {
           <SidebarFooter className="border-t border-gray-100 p-4">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-blue-700 font-medium text-sm">U</span>
+                <span className="text-blue-700 font-medium text-sm">{getUserInitials()}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 text-sm truncate">Usuario Lab</p>
-                <p className="text-xs text-gray-500 truncate">Técnico Senior</p>
+                <p className="font-medium text-gray-900 text-sm truncate">{getUserDisplayName()}</p>
+                <p className="text-xs text-gray-500 truncate">{getUserRole()}</p>
               </div>
-              <Button variant="ghost" size="icon" className="w-8 h-8">
-                <Settings className="w-4 h-4" />
-              </Button>
+              <button
+                onClick={handleLogout}
+                className="w-8 h-8 flex items-center justify-center hover:bg-red-50 rounded-lg transition-colors duration-200 text-gray-500 hover:text-red-600"
+                title="Cerrar sesión"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
             </div>
           </SidebarFooter>
         </Sidebar>
