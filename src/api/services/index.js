@@ -12,3 +12,4 @@ export { default as workflowsService } from './workflows';
 export { analysisService, analysisTemplatesService } from './analysis';
 export { default as quotesService } from './quotes';
 export { default as filesService } from './files';
+export { default as administrationService } from './administration';

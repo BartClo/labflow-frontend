@@ -15,6 +15,8 @@ import Procedures from "./Procedures";
 
 import OTGeneration from "./OTGeneration";
 
+import Administration from "./Administration";
+
 import { BrowserRouter as Router, Route, Routes, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from "@/context/AuthContext";
 
@@ -33,6 +35,8 @@ const PAGES = {
     Procedures: Procedures,
     
     OTGeneration: OTGeneration,
+    
+    Administration: Administration,
     
 }
 
@@ -101,6 +105,8 @@ function PagesContent() {
                 <Route path="/Procedures" element={<Procedures />} />
                 
                 <Route path="/OTGeneration" element={<OTGeneration />} />
+                
+                <Route path="/Administration" element={<Administration />} />
                 
             </Routes>
         </Layout>

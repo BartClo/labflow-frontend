@@ -9,7 +9,8 @@ import {
   Settings,
   Bell,
   Search,
-  LogOut
+  LogOut,
+  Shield
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,37 +32,48 @@ import { Input } from "@/components/ui/input";
 
 import logo from "/assets/image/LabFlow.svg";
 
-const navigationItems = [
-  {
-    title: "Panel Principal",
-    url: createPageUrl("Dashboard"),
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Clientes",
-    url: createPageUrl("Clients"),
-    icon: Users,
-  },
-  {
-    title: "Muestras",
-    url: createPageUrl("Samples"),
-    icon: FlaskConical,
-  },
-  {
-    title: "Órdenes de Trabajo",
-    url: createPageUrl("OTGeneration"),
-    icon: Settings,
-  },
-  {
-    title: "Procedimientos",
-    url: createPageUrl("Procedures"),
-    icon: Settings,
-  },
-];
-
 export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const { user, logout } = useAuth();
+
+  // Check if user is admin
+  const isAdmin = user?.rol?.nombre === "ADMINISTRADOR";
+
+  // Build navigation items dynamically based on user role
+  const navigationItems = [
+    {
+      title: "Panel Principal",
+      url: createPageUrl("Dashboard"),
+      icon: LayoutDashboard,
+    },
+    {
+      title: "Clientes",
+      url: createPageUrl("Clients"),
+      icon: Users,
+    },
+    {
+      title: "Muestras",
+      url: createPageUrl("Samples"),
+      icon: FlaskConical,
+    },
+    {
+      title: "Órdenes de Trabajo",
+      url: createPageUrl("OTGeneration"),
+      icon: Settings,
+    },
+    {
+      title: "Procedimientos",
+      url: createPageUrl("Procedures"),
+      icon: Settings,
+    },
+    ...(isAdmin ? [
+      {
+        title: "Administración",
+        url: createPageUrl("Administration"),
+        icon: Shield,
+      },
+    ] : []),
+  ];
 
   const handleLogout = async () => {
     await logout();
