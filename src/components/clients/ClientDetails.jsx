@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from 'react-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,8 +23,8 @@ const clientTypeConfig = {
 };
 
 export default function ClientDetails({ client, stats, onEdit, onClose }) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+  const modal = (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[99999]">
       <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center gap-4">
@@ -174,4 +175,6 @@ export default function ClientDetails({ client, stats, onEdit, onClose }) {
       </Card>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal;
 }
