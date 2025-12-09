@@ -31,7 +31,7 @@ export const authService = {
       //     },
       //     token: 'mock-token-1'
       //   };
-      //   localStorage.setItem('authToken', authData.token);
+      //   localStorage.setItem('token', authData.token);
       //   localStorage.setItem('user', JSON.stringify(authData.user));
       //   console.log('AuthService: Mock login successful');
       //   return authData;
@@ -84,7 +84,7 @@ export const authService = {
         token: `mock-token-${user.id}` // Generate a mock token for now
       };
       
-      localStorage.setItem('authToken', authData.token);
+      localStorage.setItem('token', authData.token);
       localStorage.setItem('user', JSON.stringify(authData.user));
       
       console.log('AuthService: Login successful, stored data:', authData);
@@ -116,7 +116,7 @@ export const authService = {
       // In the future, you can call a logout endpoint
       // await apiClient.post('/auth/logout');
     } finally {
-      localStorage.removeItem('authToken');
+      localStorage.removeItem('token');
       localStorage.removeItem('user');
     }
   },
@@ -135,7 +135,7 @@ export const authService = {
   refreshToken: async () => {
     const response = await apiClient.post('/auth/refresh');
     if (response.data.token) {
-      localStorage.setItem('authToken', response.data.token);
+      localStorage.setItem('token', response.data.token);
     }
     return response.data;
   },
@@ -163,7 +163,7 @@ export const authService = {
    * Check if user is authenticated
    */
   isAuthenticated: () => {
-    return !!localStorage.getItem('authToken');
+    return !!localStorage.getItem('token');
   },
 
   /**

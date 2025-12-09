@@ -11,7 +11,15 @@ export const analysisService = {
    * Get all analyses
    */
   getAll: async (params = {}) => {
-    const response = await apiClient.get('/analyses', { params });
+    const response = await apiClient.get('/analisis', { params });
+    return response.data;
+  },
+
+  /**
+   * Get all active analyses
+   */
+  getActive: async () => {
+    const response = await apiClient.get('/analisis/activos');
     return response.data;
   },
 
@@ -19,7 +27,33 @@ export const analysisService = {
    * Get a single analysis by ID
    */
   getById: async (id) => {
-    const response = await apiClient.get(`/analyses/${id}`);
+    const response = await apiClient.get(`/analisis/${id}`);
+    return response.data;
+  },
+
+  /**
+   * Get analysis by code
+   */
+  getByCode: async (codigo) => {
+    const response = await apiClient.get(`/analisis/codigo/${codigo}`);
+    return response.data;
+  },
+
+  /**
+   * Search analyses by category
+   */
+  getByCategory: async (categoria) => {
+    const response = await apiClient.get(`/analisis/categoria/${categoria}`);
+    return response.data;
+  },
+
+  /**
+   * Search analyses by name
+   */
+  searchByName: async (nombre) => {
+    const response = await apiClient.get('/analisis/buscar', { 
+      params: { nombre } 
+    });
     return response.data;
   },
 
@@ -27,7 +61,7 @@ export const analysisService = {
    * Create a new analysis
    */
   create: async (analysisData) => {
-    const response = await apiClient.post('/analyses', analysisData);
+    const response = await apiClient.post('/analisis', analysisData);
     return response.data;
   },
 
@@ -35,7 +69,17 @@ export const analysisService = {
    * Update an existing analysis
    */
   update: async (id, analysisData) => {
-    const response = await apiClient.put(`/analyses/${id}`, analysisData);
+    const response = await apiClient.put(`/analisis/${id}`, analysisData);
+    return response.data;
+  },
+
+  /**
+   * Change analysis status
+   */
+  changeStatus: async (id, estado) => {
+    const response = await apiClient.patch(`/analisis/${id}/estado`, null, {
+      params: { estado }
+    });
     return response.data;
   },
 
@@ -43,25 +87,18 @@ export const analysisService = {
    * Delete an analysis
    */
   delete: async (id) => {
-    const response = await apiClient.delete(`/analyses/${id}`);
+    const response = await apiClient.delete(`/analisis/${id}`);
     return response.data;
   },
 
-  /**
-   * Get analyses by sample ID
-   */
-  getBySampleId: async (sampleId) => {
-    const response = await apiClient.get(`/analyses/sample/${sampleId}`);
-    return response.data;
-  },
 };
 
 export const analysisTemplatesService = {
   /**
-   * Get all analysis templates
+   * Get all analysis templates (plantillas)
    */
   getAll: async (params = {}) => {
-    const response = await apiClient.get('/analysis-templates', { params });
+    const response = await apiClient.get('/plantillas', { params });
     return response.data;
   },
 
@@ -69,7 +106,7 @@ export const analysisTemplatesService = {
    * Get a single analysis template by ID
    */
   getById: async (id) => {
-    const response = await apiClient.get(`/analysis-templates/${id}`);
+    const response = await apiClient.get(`/plantillas/${id}`);
     return response.data;
   },
 
@@ -77,7 +114,7 @@ export const analysisTemplatesService = {
    * Create a new analysis template
    */
   create: async (templateData) => {
-    const response = await apiClient.post('/analysis-templates', templateData);
+    const response = await apiClient.post('/plantillas', templateData);
     return response.data;
   },
 
@@ -85,7 +122,7 @@ export const analysisTemplatesService = {
    * Update an existing analysis template
    */
   update: async (id, templateData) => {
-    const response = await apiClient.put(`/analysis-templates/${id}`, templateData);
+    const response = await apiClient.put(`/plantillas/${id}`, templateData);
     return response.data;
   },
 
@@ -93,15 +130,7 @@ export const analysisTemplatesService = {
    * Delete an analysis template
    */
   delete: async (id) => {
-    const response = await apiClient.delete(`/analysis-templates/${id}`);
-    return response.data;
-  },
-
-  /**
-   * Duplicate an analysis template
-   */
-  duplicate: async (id) => {
-    const response = await apiClient.post(`/analysis-templates/${id}/duplicate`);
+    const response = await apiClient.delete(`/plantillas/${id}`);
     return response.data;
   },
 };

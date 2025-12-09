@@ -41,8 +41,8 @@ export default function ProceduresPage() {
     setIsLoading(true);
     try {
       const [analysesData, templatesData] = await Promise.all([
-        Analysis.list('-created_date'),
-        AnalysisTemplate.list('-created_date')
+        Analysis.getAll(),
+        AnalysisTemplate.getAll()
       ]);
       setAnalyses(analysesData);
       setTemplates(templatesData);
@@ -105,9 +105,9 @@ export default function ProceduresPage() {
   };
 
   const filteredAnalyses = analyses.filter(analysis =>
-    analysis.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    analysis.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    analysis.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    analysis.nombreAnalisis?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    analysis.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    analysis.categoria?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredTemplates = templates.filter(template =>

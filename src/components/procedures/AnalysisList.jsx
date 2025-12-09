@@ -24,7 +24,7 @@ export default function AnalysisList({ analyses, isLoading, onEdit, onDelete }) 
     return (
       <div className="grid gap-4">
         {Array(5).fill(0).map((_, i) => (
-          <Card key={i}>
+          <Card key={`skeleton-${i}`}>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
@@ -58,10 +58,10 @@ export default function AnalysisList({ analyses, isLoading, onEdit, onDelete }) 
   return (
     <div className="grid gap-4">
       {analyses.map((analysis) => {
-        const categoryInfo = categoryConfig[analysis.category] || categoryConfig.otros;
+        const categoryInfo = categoryConfig[analysis.categoria] || categoryConfig.otros;
         
         return (
-          <Card key={analysis.id} className="hover:shadow-lg transition-shadow">
+          <Card key={analysis.idAnalisis || analysis.id} className="hover:shadow-lg transition-shadow">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
@@ -72,10 +72,10 @@ export default function AnalysisList({ analyses, isLoading, onEdit, onDelete }) 
                   <div className="space-y-1">
                     <div className="flex items-center gap-3">
                       <h3 className="text-lg font-semibold text-gray-900">
-                        {analysis.name}
+                        {analysis.nombreAnalisis}
                       </h3>
                       <Badge variant="outline" className="font-mono">
-                        {analysis.code}
+                        {analysis.codigo}
                       </Badge>
                       <Badge className={categoryInfo.color}>
                         {categoryInfo.label}
@@ -83,38 +83,38 @@ export default function AnalysisList({ analyses, isLoading, onEdit, onDelete }) 
                     </div>
                     
                     <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <span>Método: {analysis.method}</span>
-                      {analysis.estimated_duration_hours && (
+                      <span>Método: {analysis.metodoEnsayo}</span>
+                      {analysis.duracionEstimadaHoras && (
                         <div className="flex items-center gap-1">
                           <Clock className="w-4 h-4" />
-                          <span>{analysis.estimated_duration_hours}h</span>
+                          <span>{analysis.duracionEstimadaHoras}h</span>
                         </div>
                       )}
-                      {analysis.price && (
+                      {analysis.precioClp && (
                         <div className="flex items-center gap-1">
                           <DollarSign className="w-4 h-4" />
-                          <span>${analysis.price.toLocaleString()}</span>
+                          <span>${analysis.precioClp.toLocaleString()}</span>
                         </div>
                       )}
                     </div>
                     
-                    {analysis.description && (
+                    {analysis.descripcion && (
                       <p className="text-sm text-gray-500 max-w-2xl">
-                        {analysis.description}
+                        {analysis.descripcion}
                       </p>
                     )}
                     
-                    {analysis.parameters && analysis.parameters.length > 0 && (
+                    {analysis.parametrosMedir && Object.keys(analysis.parametrosMedir).length > 0 && (
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-xs text-gray-500">Parámetros:</span>
-                        {analysis.parameters.slice(0, 3).map((param, idx) => (
-                          <Badge key={idx} variant="outline" className="text-xs">
-                            {param.parameter_name}
+                        {Object.keys(analysis.parametrosMedir).slice(0, 3).map((param, idx) => (
+                          <Badge key={`${analysis.idAnalisis || analysis.codigo}-param-${idx}`} variant="outline" className="text-xs">
+                            {param}
                           </Badge>
                         ))}
-                        {analysis.parameters.length > 3 && (
+                        {Object.keys(analysis.parametrosMedir).length > 3 && (
                           <Badge variant="outline" className="text-xs">
-                            +{analysis.parameters.length - 3} más
+                            +{Object.keys(analysis.parametrosMedir).length - 3} más
                           </Badge>
                         )}
                       </div>
@@ -134,7 +134,7 @@ export default function AnalysisList({ analyses, isLoading, onEdit, onDelete }) 
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => onDelete(analysis.id)}
+                    onClick={() => onDelete(analysis.idAnalisis)}
                     className="text-red-600 hover:text-red-700"
                   >
                     <Trash2 className="w-4 h-4" />

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import authService from '@/api/services/auth';
+import { authService } from '../api/services/auth';
 
 const AuthContext = createContext();
 
@@ -11,7 +11,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     // Check if user is already logged in
     const storedUser = authService.getStoredUser();
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     
     if (storedUser && token) {
       setUser(storedUser);
@@ -62,10 +62,13 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => {
+// Hook debe ser una función nombrada para Fast Refresh
+function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within AuthProvider');
   }
   return context;
-};
+}
+
+export { useAuth };
