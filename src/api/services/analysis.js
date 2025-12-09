@@ -98,8 +98,25 @@ export const analysisTemplatesService = {
    * Get all analysis templates (plantillas)
    */
   getAll: async (params = {}) => {
-    const response = await apiClient.get('/plantillas', { params });
-    return response.data;
+    try {
+      console.log('🌐 Making API call to /plantillas with params:', params);
+      const response = await apiClient.get('/plantillas', { params });
+      console.log('📦 Raw API response:', response);
+      console.log('📋 Templates data:', response.data);
+      console.log('📊 Data type:', typeof response.data);
+      console.log('📈 Data length:', Array.isArray(response.data) ? response.data.length : 'Not an array');
+      
+      // Ensure we always return an array
+      const templates = Array.isArray(response.data) ? response.data : [];
+      console.log('✅ Processed templates:', templates);
+      
+      return templates;
+    } catch (error) {
+      console.error('❌ Error fetching analysis templates:', error);
+      console.error('❌ Error response:', error.response?.data);
+      console.error('❌ Error status:', error.response?.status);
+      throw error;
+    }
   },
 
   /**

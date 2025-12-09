@@ -13,6 +13,19 @@ import {
   Calendar
 } from "lucide-react";
 
+// Función de utilidad para limpiar texto
+const cleanText = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/\\n/g, ' ')     // \n como texto literal
+    .replace(/\n/g, ' ')      // salto de línea real
+    .replace(/\\r/g, ' ')     // \r como texto literal  
+    .replace(/\r/g, ' ')      // retorno de carro real
+    .replace(/\t/g, ' ')      // tabs
+    .replace(/\s{2,}/g, ' ')  // múltiples espacios a uno solo
+    .trim();                  // espacios al inicio/final
+};
+
 export default function TemplateList({ templates, analyses, isLoading, onView, onEdit, onDelete }) {
   if (isLoading) {
     return (
@@ -52,92 +65,104 @@ export default function TemplateList({ templates, analyses, isLoading, onView, o
   return (
     <div className="grid gap-4">
       {templates.map((template) => {
-        const analysisCount = template.analysis_ids?.length || 0;
+        const analysisCount = 1; // Each template represents one analysis
         
         return (
-          <Card key={template.id} className="hover:shadow-lg transition-shadow">
+          <Card key={template.idPlantilla} className="hover:shadow-lg transition-shadow">
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center">
-                    <Package className="w-6 h-6 text-green-600" />
+              <div className="space-y-4">
+                {/* Header with title and badges */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                      <Package className="w-5 h-5 text-green-600" />
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h3 className="text-lg font-semibold text-gray-900 truncate">
+                          {cleanText(template.nombrePlantilla)}
+                        </h3>
+                        {template.estado && (
+                          <Badge variant={template.estado === 'Activo' ? 'default' : 'secondary'}>
+                            {template.estado}
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      {template.idPlantilla && (
+                        <div className="mt-1">
+                          <Badge variant="outline" className="font-mono text-xs break-all">
+                            ID: {template.idPlantilla}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {template.name}
-                      </h3>
-                      <Badge variant="outline">
-                        {analysisCount} análisis
-                      </Badge>
-                    </div>
-                    
-                    {template.description && (
-                      <p className="text-sm text-gray-600 max-w-2xl">
-                        {template.description}
-                      </p>
-                    )}
-                    
-                    <div className="flex items-center gap-4 text-sm text-gray-600 mt-2">
-                      {template.sample_types && (
-                        <div className="flex items-center gap-2">
-                          <span>Tipos de muestra:</span>
-                          {template.sample_types.slice(0, 2).map((type, idx) => (
-                            <Badge key={idx} variant="outline" className="text-xs capitalize">
-                              {type}
-                            </Badge>
-                          ))}
-                          {template.sample_types.length > 2 && (
-                            <Badge variant="outline" className="text-xs">
-                              +{template.sample_types.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                      
-                      {template.total_price && (
-                        <div className="flex items-center gap-1">
-                          <DollarSign className="w-4 h-4" />
-                          <span>${template.total_price.toLocaleString()}</span>
-                        </div>
-                      )}
-                      
-                      {template.estimated_duration_days && (
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-4 h-4" />
-                          <span>{template.estimated_duration_days} días</span>
-                        </div>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-2 ml-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onView(template)}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      Ver
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onEdit(template)}
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Editar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onDelete(template.idPlantilla)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onView(template)}
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Ver
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onEdit(template)}
-                  >
-                    <Edit className="w-4 h-4 mr-2" />
-                    Editar
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onDelete(template.id)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                {/* Description */}
+                {template.descripcion && (
+                  <div>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {cleanText(template.descripcion)}
+                    </p>
+                  </div>
+                )}
+                
+                {/* Metadata */}
+                <div className="flex items-center gap-6 text-sm text-gray-600">
+                  {template.tiposMuestraAplicables && template.tiposMuestraAplicables.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Tipos de muestra:</span>
+                      <div className="flex gap-1">
+                        {template.tiposMuestraAplicables.slice(0, 3).map((type, idx) => (
+                          <Badge key={idx} variant="outline" className="text-xs">
+                            {type}
+                          </Badge>
+                        ))}
+                        {template.tiposMuestraAplicables.length > 3 && (
+                          <Badge variant="outline" className="text-xs">
+                            +{template.tiposMuestraAplicables.length - 3} más
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {template.analisisIncluidos !== undefined && (
+                    <div className="flex items-center gap-1">
+                      <FlaskConical className="w-4 h-4" />
+                      <span>{template.analisisIncluidos.length} análisis incluidos</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>

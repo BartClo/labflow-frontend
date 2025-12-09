@@ -35,6 +35,7 @@ export default function ProceduresPage() {
   const [originalAnalysisId, setOriginalAnalysisId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showAnalysisDetails, setShowAnalysisDetails] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -42,15 +43,28 @@ export default function ProceduresPage() {
 
   const loadData = async () => {
     setIsLoading(true);
+    setError(null);
     try {
+      console.log('🔍 Loading data: starting API calls...');
       const [analysesData, templatesData] = await Promise.all([
         Analysis.getAll(),
         AnalysisTemplate.getAll()
       ]);
+      console.log('✅ Analysis data received:', analysesData);
+      console.log('✅ Templates data received:', templatesData);
+      console.log('📊 Templates count:', templatesData?.length || 0);
+      
       setAnalyses(analysesData);
       setTemplates(templatesData);
     } catch (error) {
-      console.error("Error loading data:", error);
+      console.error("❌ Error loading data:", error);
+      console.error("❌ Error details:", {
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+      setError("Error al cargar los datos. Por favor intente nuevamente.");
     }
     setIsLoading(false);
   };
@@ -150,8 +164,10 @@ export default function ProceduresPage() {
   );
 
   const filteredTemplates = templates.filter(template =>
-    template.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    template.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    template.nombrePlantilla?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    template.idPlantilla?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    template.descripcion?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    template.estado?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -173,6 +189,21 @@ export default function ProceduresPage() {
           className="pl-10"
         />
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md flex items-center justify-between">
+          <span>{error}</span>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={loadData}
+            className="text-red-600 hover:text-red-800"
+          >
+            Reintentar
+          </Button>
+        </div>
+      )}
 
       {/* Tabs para Análisis y Plantillas */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
