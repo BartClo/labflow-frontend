@@ -17,6 +17,7 @@ import {
 
 import AnalysisList from "../components/procedures/AnalysisList";
 import AnalysisForm from "../components/procedures/AnalysisForm";
+import AnalysisDetails from "../components/procedures/AnalysisDetails";
 import TemplateList from "../components/procedures/TemplateList";
 import TemplateForm from "../components/procedures/TemplateForm";
 import TemplateDetails from "../components/procedures/TemplateDetails";
@@ -33,6 +34,7 @@ export default function ProceduresPage() {
   const [showTemplateDetails, setShowTemplateDetails] = useState(false);
   const [originalAnalysisId, setOriginalAnalysisId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showAnalysisDetails, setShowAnalysisDetails] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -112,6 +114,11 @@ export default function ProceduresPage() {
     } catch (error) {
       console.error("Error saving template:", error);
     }
+  };
+
+  const handleViewAnalysis = (analysis) => {
+    setSelectedAnalysis(analysis);
+    setShowAnalysisDetails(true);
   };
 
   const handleDeleteAnalysis = async (analysisId) => {
@@ -195,6 +202,7 @@ export default function ProceduresPage() {
           <AnalysisList
             analyses={filteredAnalyses}
             isLoading={isLoading}
+            onView={handleViewAnalysis}
             onEdit={(analysis) => {
               // Transform backend data to form format
               const parameters = Object.entries(analysis.parametrosMedir || {}).map(([name, params]) => ({
@@ -265,6 +273,46 @@ export default function ProceduresPage() {
             setShowAnalysisForm(false);
             setSelectedAnalysis(null);
             setOriginalAnalysisId(null);
+          }}
+        />
+      )}
+
+      {/* Modal de detalles de análisis */}
+      {showAnalysisDetails && selectedAnalysis && (
+        <AnalysisDetails
+          analysis={selectedAnalysis}
+          onEdit={() => {
+            setShowAnalysisDetails(false);
+            // Transform the analysis data for editing
+            const parameters = Object.entries(selectedAnalysis.parametrosMedir || {}).map(([name, params]) => ({
+              parameter_name: name,
+              unit: params.unidad || '',
+              detection_limit: params.limiteDeteccion || '',
+              max_limit: params.limiteMaximo || ''
+            }));
+            
+            const equipment = Object.values(selectedAnalysis.equiposRequeridos || {}).filter(eq => eq);
+            
+            const formattedAnalysis = {
+              name: selectedAnalysis.nombreAnalisis,
+              code: selectedAnalysis.codigo,
+              description: selectedAnalysis.descripcion,
+              category: selectedAnalysis.categoria,
+              method: selectedAnalysis.metodoEnsayo,
+              sample_types: selectedAnalysis.tiposMuestraAplicables || [],
+              parameters: parameters.length > 0 ? parameters : [{ parameter_name: '', unit: '', detection_limit: '', max_limit: '' }],
+              required_equipment: equipment.length > 0 ? equipment : [''],
+              estimated_duration_hours: selectedAnalysis.duracionEstimadaHoras,
+              price: selectedAnalysis.precioClp,
+              status: selectedAnalysis.estado?.toLowerCase() === 'activo' ? 'activo' : 'inactivo'
+            };
+            setOriginalAnalysisId(selectedAnalysis.idAnalisis);
+            setSelectedAnalysis(formattedAnalysis);
+            setShowAnalysisForm(true);
+          }}
+          onClose={() => {
+            setShowAnalysisDetails(false);
+            setSelectedAnalysis(null);
           }}
         />
       )}

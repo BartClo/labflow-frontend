@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { 
   FlaskConical,
   Edit,
+  Eye,
   Trash2,
   Clock,
   DollarSign
@@ -19,7 +20,7 @@ const categoryConfig = {
   otros: { color: "bg-gray-100 text-gray-800", label: "Otros" }
 };
 
-export default function AnalysisList({ analyses, isLoading, onEdit, onDelete }) {
+export default function AnalysisList({ analyses, isLoading, onView, onEdit, onDelete }) {
   if (isLoading) {
     return (
       <div className="grid gap-4">
@@ -123,6 +124,14 @@ export default function AnalysisList({ analyses, isLoading, onEdit, onDelete }) 
                 </div>
                 
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onView(analysis)}
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Ver
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"

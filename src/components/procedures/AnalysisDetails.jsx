@@ -13,29 +13,39 @@ import {
 } from "lucide-react";
 
 const categoryConfig = {
-  microbiologico: { color: "bg-green-100 text-green-800", label: "Microbiológico" },
-  fisico_quimico: { color: "bg-blue-100 text-blue-800", label: "Físico-Químico" },
-  metales_pesados: { color: "bg-red-100 text-red-800", label: "Metales Pesados" },
-  organicos: { color: "bg-purple-100 text-purple-800", label: "Orgánicos" },
-  otros: { color: "bg-gray-100 text-gray-800", label: "Otros" }
+  "Microbiológico": { color: "bg-purple-100 text-purple-800 border-purple-200" },
+  "Físico-Químico": { color: "bg-blue-100 text-blue-800 border-blue-200" },
+  "Metales Pesados": { color: "bg-orange-100 text-orange-800 border-orange-200" },
+  "Orgánicos": { color: "bg-green-100 text-green-800 border-green-200" },
+  "Otros": { color: "bg-gray-100 text-gray-800 border-gray-200" }
 };
 
 export default function AnalysisDetails({ analysis, onEdit, onClose }) {
-  const categoryInfo = categoryConfig[analysis.category] || categoryConfig.otros;
+  if (!analysis) return null;
+
+  const categoryInfo = categoryConfig[analysis.categoria] || categoryConfig["Otros"];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center">
               <FlaskConical className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <CardTitle className="text-2xl">{analysis.name}</CardTitle>
-              {analysis.description && (
-                <p className="text-gray-600 mt-1">{analysis.description}</p>
-              )}
+              <CardTitle className="text-2xl">{analysis.nombreAnalisis}</CardTitle>
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant="outline" className="font-mono">
+                  {analysis.codigo}
+                </Badge>
+                <Badge className={`${categoryInfo.color} border`}>
+                  {analysis.categoria}
+                </Badge>
+                <Badge variant={analysis.estado === 'Activo' ? 'default' : 'secondary'}>
+                  {analysis.estado}
+                </Badge>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -43,153 +53,179 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
               <Edit className="w-4 h-4 mr-2" />
               Editar
             </Button>
-            <Button variant="ghost" size="icon" onClick={onClose}>
+            <Button onClick={onClose} variant="outline" size="icon">
               <X className="w-4 h-4" />
             </Button>
           </div>
         </CardHeader>
-        
+
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="bg-blue-50 border-blue-200">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <DollarSign className="w-8 h-8 text-blue-600" />
-                  <div>
-                    <p className="text-2xl font-bold text-blue-900">
-                      ${analysis.price?.toLocaleString() || '0'}
-                    </p>
-                    <p className="text-sm text-blue-700">Precio</p>
-                  </div>
+          {/* Información básica */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Información General
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <span className="font-medium text-gray-700">Descripción:</span>
+                  <p className="text-gray-600 mt-1">{analysis.descripcion || 'No especificada'}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Método de Ensayo:</span>
+                  <p className="text-gray-600 mt-1">{analysis.metodoEnsayo || 'No especificado'}</p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-green-50 border-green-200">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Clock className="w-8 h-8 text-green-600" />
-                  <div>
-                    <p className="text-2xl font-bold text-green-900">
-                      {analysis.turnaround_time || 'N/A'}
-                    </p>
-                    <p className="text-sm text-green-700">Tiempo estimado</p>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Clock className="w-5 h-5" />
+                  Detalles Operativos
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {analysis.duracionEstimadaHoras && (
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700">Duración:</span>
+                    <span className="text-gray-600">{analysis.duracionEstimadaHoras} horas</span>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-purple-50 border-purple-200">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <FlaskConical className="w-8 h-8 text-purple-600" />
-                  <div>
-                    <Badge className={categoryInfo.color}>
-                      {categoryInfo.label}
-                    </Badge>
-                    <p className="text-sm text-purple-700 mt-1">Categoría</p>
+                )}
+                {analysis.precioClp && (
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700">Precio:</span>
+                    <span className="text-gray-600">${analysis.precioClp.toLocaleString()} CLP</span>
                   </div>
-                </div>
+                )}
+                {analysis.diasEntrega && (
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-gray-700">Días de Entrega:</span>
+                    <span className="text-gray-600">{analysis.diasEntrega} días</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {analysis.methodology && (
-            <div>
-              <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Metodología
-              </h3>
-              <Card className="bg-gray-50">
-                <CardContent className="p-4">
-                  <p className="text-gray-700 whitespace-pre-wrap">
-                    {analysis.methodology}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+          {/* Tipos de muestra aplicables */}
+          {analysis.tiposMuestraAplicables && analysis.tiposMuestraAplicables.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Tipos de Muestra Aplicables
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {analysis.tiposMuestraAplicables.map((tipo, index) => (
+                    <Badge key={index} variant="outline" className="bg-gray-50">
+                      {typeof tipo === 'object' ? JSON.stringify(tipo) : String(tipo)}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
 
-          {analysis.parameters && analysis.parameters.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Parámetros</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {analysis.parameters.map((param, index) => (
-                  <Card key={index} className="bg-white border">
-                    <CardContent className="p-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <p className="font-medium text-gray-900">{param.name}</p>
-                          {param.unit && (
-                            <p className="text-sm text-gray-600">Unidad: {param.unit}</p>
-                          )}
-                          {param.method && (
-                            <p className="text-sm text-gray-600">Método: {param.method}</p>
-                          )}
-                        </div>
-                        {param.limit && (
-                          <Badge variant="outline" className="ml-2">
-                            Límite: {param.limit}
-                          </Badge>
+          {/* Parámetros a medir */}
+          {analysis.parametrosMedir && Object.keys(analysis.parametrosMedir).length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Parámetros a Medir
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {Object.entries(analysis.parametrosMedir).map(([parametro, detalles], index) => (
+                    <div key={index} className="border rounded-lg p-3 bg-gray-50">
+                      <h4 className="font-semibold text-gray-900">{parametro}</h4>
+                      <div className="text-sm text-gray-600 mt-1 space-y-1">
+                        {detalles && typeof detalles === 'object' && detalles.unidad && (
+                          <div><span className="font-medium">Unidad:</span> {String(detalles.unidad)}</div>
+                        )}
+                        {detalles && typeof detalles === 'object' && detalles.limiteDeteccion && (
+                          <div><span className="font-medium">Límite de Detección:</span> {String(detalles.limiteDeteccion)}</div>
+                        )}
+                        {detalles && typeof detalles === 'object' && detalles.limiteMaximo && (
+                          <div><span className="font-medium">Límite Máximo:</span> {String(detalles.limiteMaximo)}</div>
                         )}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {analysis.equipment && (
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Equipo Requerido</h3>
-              <Card className="bg-gray-50">
-                <CardContent className="p-4">
-                  <p className="text-gray-700">{analysis.equipment}</p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {analysis.notes && (
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Notas</h3>
-              <Card className="bg-yellow-50 border-yellow-200">
-                <CardContent className="p-4">
-                  <p className="text-gray-700 whitespace-pre-wrap">
-                    {analysis.notes}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {analysis.created_at && (
-            <div className="flex items-center gap-4 text-sm text-gray-600 pt-4 border-t">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  Creado: {new Date(analysis.created_at).toLocaleDateString('es-ES', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </span>
-              </div>
-              {analysis.updated_at && analysis.updated_at !== analysis.created_at && (
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  <span>
-                    Actualizado: {new Date(analysis.updated_at).toLocaleDateString('es-ES', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </span>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </CardContent>
+            </Card>
           )}
+
+          {/* Equipos requeridos */}
+          {analysis.equiposRequeridos && Object.keys(analysis.equiposRequeridos).length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Equipos Requeridos
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {Object.values(analysis.equiposRequeridos).map((equipo, index) => (
+                    <Badge key={index} variant="outline" className="bg-blue-50 border-blue-200">
+                      {typeof equipo === 'object' ? JSON.stringify(equipo) : String(equipo)}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Fechas */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Calendar className="w-5 h-5" />
+                Información de Registro
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {analysis.fechaCreacion && (
+                  <div>
+                    <span className="font-medium text-gray-700">Fecha de Creación:</span>
+                    <p className="text-gray-600 mt-1">
+                      {new Date(analysis.fechaCreacion).toLocaleString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                )}
+                {analysis.fechaActualizacion && (
+                  <div>
+                    <span className="font-medium text-gray-700">Última Actualización:</span>
+                    <p className="text-gray-600 mt-1">
+                      {new Date(analysis.fechaActualizacion).toLocaleString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </CardContent>
       </Card>
     </div>
