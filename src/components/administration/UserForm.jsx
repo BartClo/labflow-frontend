@@ -71,14 +71,42 @@ export default function UserForm({ user, onSave, onCancel }) {
         return;
       }
 
-      if (!user && !formData.password) {
-        setError("La contraseña es requerida para nuevos usuarios");
+      if (!user && (!formData.password || formData.password.length < 8)) {
+        setError("La contraseña es requerida y debe tener al menos 8 caracteres para nuevos usuarios");
         setIsLoading(false);
         return;
       }
 
       if (!formData.rolId) {
         setError("Por favor selecciona un rol");
+        setIsLoading(false);
+        return;
+      }
+
+      if (!formData.fechaNacimiento) {
+        setError("La fecha de nacimiento es requerida");
+        setIsLoading(false);
+        return;
+      }
+
+      // Validar que la fecha de nacimiento sea válida y que el usuario sea mayor de 18 años
+      const birthDate = new Date(formData.fechaNacimiento);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+
+      if (age < 18) {
+        setError("El usuario debe ser mayor de 18 años");
+        setIsLoading(false);
+        return;
+      }
+
+      if (birthDate >= today) {
+        setError("La fecha de nacimiento debe ser en el pasado");
         setIsLoading(false);
         return;
       }
@@ -91,7 +119,7 @@ export default function UserForm({ user, onSave, onCancel }) {
         telefono: formData.telefono,
         direccion: formData.direccion,
         fechaNacimiento: formData.fechaNacimiento,
-        rolId: String(formData.rolId), // Asegurar que sea string
+        rolId: formData.rolId, // Mantener como UUID string
         activo: formData.activo === true || formData.activo === "true"
       };
 
@@ -99,6 +127,21 @@ export default function UserForm({ user, onSave, onCancel }) {
         requestData.password = formData.password;
       }
 
+      // Log detallado de cada campo
+      console.log('=== DATOS DETALLADOS ===');
+      console.log('nombre:', `"${requestData.nombre}" (length: ${requestData.nombre?.length})`);
+      console.log('apellido:', `"${requestData.apellido}" (length: ${requestData.apellido?.length})`);
+      console.log('email:', `"${requestData.email}" (length: ${requestData.email?.length})`);
+      console.log('username:', `"${requestData.username}" (length: ${requestData.username?.length})`);
+      console.log('password:', `"${requestData.password}" (length: ${requestData.password?.length})`);
+      console.log('telefono:', `"${requestData.telefono}"`);
+      console.log('direccion:', `"${requestData.direccion}"`);
+      console.log('fechaNacimiento:', `"${requestData.fechaNacimiento}"`);
+      console.log('rolId:', `"${requestData.rolId}" (type: ${typeof requestData.rolId})`);
+      console.log('activo:', requestData.activo);
+      console.log('=== FIN DATOS DETALLADOS ===');
+
+      console.log('Datos del formulario antes de envío:', formData);
       console.log('Enviando datos:', requestData);
 
       if (user) {
@@ -202,7 +245,7 @@ export default function UserForm({ user, onSave, onCancel }) {
               
               <div className="space-y-2">
                 <Label htmlFor="password">
-                  Contraseña {user ? '(dejar en blanco para no cambiar)' : '*'}
+                  Contraseña {user ? '(dejar en blanco para no cambiar)' : '* (mínimo 8 caracteres)'}
                 </Label>
                 <Input
                   id="password"
@@ -211,6 +254,7 @@ export default function UserForm({ user, onSave, onCancel }) {
                   onChange={(e) => handleInputChange('password', e.target.value)}
                   placeholder="••••••••"
                   required={!user}
+                  minLength={8}
                 />
               </div>
             </div>
@@ -228,12 +272,13 @@ export default function UserForm({ user, onSave, onCancel }) {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="fechaNacimiento">Fecha de Nacimiento</Label>
+                <Label htmlFor="fechaNacimiento">Fecha de Nacimiento *</Label>
                 <Input
                   id="fechaNacimiento"
                   type="date"
                   value={formData.fechaNacimiento}
                   onChange={(e) => handleInputChange('fechaNacimiento', e.target.value)}
+                  required
                 />
               </div>
             </div>

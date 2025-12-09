@@ -75,10 +75,16 @@ export const administrationService = {
    */
   createUser: async (userData) => {
     try {
+      console.log('Datos enviados al backend:', JSON.stringify(userData, null, 2));
       const response = await apiClient.post('/usuarios', userData);
       return response.data;
     } catch (error) {
       console.error('Administration: Error creating user:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      if (error.response?.data?.errors) {
+        console.error('Validation errors:', error.response.data.errors);
+      }
       throw error;
     }
   },
