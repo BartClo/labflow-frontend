@@ -31,6 +31,7 @@ export default function ProceduresPage() {
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [showTemplateDetails, setShowTemplateDetails] = useState(false);
+  const [originalAnalysisId, setOriginalAnalysisId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -54,13 +55,44 @@ export default function ProceduresPage() {
 
   const handleAnalysisSubmit = async (analysisData) => {
     try {
-      if (selectedAnalysis) {
-        await Analysis.update(selectedAnalysis.id, analysisData);
+      // Transform the data to match backend format
+      const backendData = {
+        nombreAnalisis: analysisData.name,
+        codigo: analysisData.code,
+        descripcion: analysisData.description,
+        categoria: analysisData.category,
+        metodoEnsayo: analysisData.method,
+        tiposMuestraAplicables: analysisData.sample_types || [],
+        parametrosMedir: analysisData.parameters.reduce((acc, param) => {
+          if (param.parameter_name) {
+            acc[param.parameter_name] = {
+              unidad: param.unit || '',
+              limiteDeteccion: param.detection_limit || '',
+              limiteMaximo: param.max_limit || ''
+            };
+          }
+          return acc;
+        }, {}),
+        equiposRequeridos: analysisData.required_equipment.reduce((acc, equipment, index) => {
+          if (equipment) {
+            acc[`equipo${index + 1}`] = equipment;
+          }
+          return acc;
+        }, {}),
+        duracionEstimadaHoras: analysisData.estimated_duration_hours,
+        precioClp: analysisData.price,
+        diasEntrega: 3, // Default value
+        estado: analysisData.status === 'activo' ? 'Activo' : 'Inactivo'
+      };
+
+      if (selectedAnalysis && originalAnalysisId) {
+        await Analysis.update(originalAnalysisId, backendData);
       } else {
-        await Analysis.create(analysisData);
+        await Analysis.create(backendData);
       }
       setShowAnalysisForm(false);
       setSelectedAnalysis(null);
+      setOriginalAnalysisId(null);
       loadData();
     } catch (error) {
       console.error("Error saving analysis:", error);
@@ -164,7 +196,31 @@ export default function ProceduresPage() {
             analyses={filteredAnalyses}
             isLoading={isLoading}
             onEdit={(analysis) => {
-              setSelectedAnalysis(analysis);
+              // Transform backend data to form format
+              const parameters = Object.entries(analysis.parametrosMedir || {}).map(([name, params]) => ({
+                parameter_name: name,
+                unit: params.unidad || '',
+                detection_limit: params.limiteDeteccion || '',
+                max_limit: params.limiteMaximo || ''
+              }));
+              
+              const equipment = Object.values(analysis.equiposRequeridos || {}).filter(eq => eq);
+              
+              const formattedAnalysis = {
+                name: analysis.nombreAnalisis,
+                code: analysis.codigo,
+                description: analysis.descripcion,
+                category: analysis.categoria,
+                method: analysis.metodoEnsayo,
+                sample_types: analysis.tiposMuestraAplicables || [],
+                parameters: parameters.length > 0 ? parameters : [{ parameter_name: '', unit: '', detection_limit: '', max_limit: '' }],
+                required_equipment: equipment.length > 0 ? equipment : [''],
+                estimated_duration_hours: analysis.duracionEstimadaHoras,
+                price: analysis.precioClp,
+                status: analysis.estado?.toLowerCase() === 'activo' ? 'activo' : 'inactivo'
+              };
+              setOriginalAnalysisId(analysis.idAnalisis);
+              setSelectedAnalysis(formattedAnalysis);
               setShowAnalysisForm(true);
             }}
             onDelete={handleDeleteAnalysis}
@@ -208,6 +264,7 @@ export default function ProceduresPage() {
           onCancel={() => {
             setShowAnalysisForm(false);
             setSelectedAnalysis(null);
+            setOriginalAnalysisId(null);
           }}
         />
       )}

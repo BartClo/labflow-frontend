@@ -9,19 +9,19 @@ import { Badge } from "@/components/ui/badge";
 import { X, Plus, Minus } from "lucide-react";
 
 const categories = [
-  { value: "microbiologico", label: "Microbiológico" },
-  { value: "fisico_quimico", label: "Físico-Químico" },
-  { value: "metales_pesados", label: "Metales Pesados" },
-  { value: "organicos", label: "Orgánicos" },
-  { value: "otros", label: "Otros" }
+  { value: "Microbiológico", label: "Microbiológico" },
+  { value: "Físico-Químico", label: "Físico-Químico" },
+  { value: "Metales Pesados", label: "Metales Pesados" },
+  { value: "Orgánicos", label: "Orgánicos" },
+  { value: "Otros", label: "Otros" }
 ];
 
 const sampleTypes = [
-  { value: "agua", label: "Agua" },
-  { value: "suelo", label: "Suelo" },
-  { value: "aire", label: "Aire" },
-  { value: "alimentos", label: "Alimentos" },
-  { value: "otros", label: "Otros" }
+  { value: "Agua", label: "Agua" },
+  { value: "Suelo", label: "Suelo" },
+  { value: "Aire", label: "Aire" },
+  { value: "Alimentos", label: "Alimentos" },
+  { value: "Otros", label: "Otros" }
 ];
 
 export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
@@ -29,7 +29,7 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
     name: analysis?.name || '',
     code: analysis?.code || '',
     description: analysis?.description || '',
-    category: analysis?.category || 'fisico_quimico',
+    category: analysis?.category || 'Físico-Químico',
     method: analysis?.method || '',
     sample_types: analysis?.sample_types || [],
     parameters: analysis?.parameters || [{ parameter_name: '', unit: '', detection_limit: '', max_limit: '' }],
