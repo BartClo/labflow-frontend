@@ -6,6 +6,7 @@ import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import { administrationService } from "@/api/services";
 import RoleForm from "./RoleForm";
 import ConfirmDialog from "@/components/ui/confirm-dialog";
+import { parsePermission } from "@/utils/permissions";
 
 export default function RoleManagement() {
   const [roles, setRoles] = useState([]);
@@ -138,7 +139,7 @@ export default function RoleManagement() {
                               key={permiso}
                               className="inline-block px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
                             >
-                              {permiso}
+                              {parsePermission(permiso)}
                             </span>
                           ))}
                         </div>

@@ -412,7 +412,5 @@ npm start
 
 ## Recursos Útiles
 
-- [Express.js Documentation](https://expressjs.com/)
-- [Mongoose Documentation](https://mongoosejs.com/)
 - [JWT.io](https://jwt.io/)
 - [Multer Documentation](https://github.com/expressjs/multer)

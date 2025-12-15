@@ -7,17 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { X } from "lucide-react";
 import { administrationService } from "@/api/services";
+import { getAvailablePermissions } from "@/utils/permissions";
 
-const PERMISOS_DISPONIBLES = [
-  { id: 'MANAGE_USERS', label: 'Gestionar Usuarios' },
-  { id: 'MANAGE_ROLES', label: 'Gestionar Roles' },
-  { id: 'MANAGE_CLIENTES', label: 'Gestionar Clientes' },
-  { id: 'MANAGE_ANALISIS', label: 'Gestionar Análisis' },
-  { id: 'MANAGE_PLANTILLAS', label: 'Gestionar Plantillas' },
-  { id: 'MANAGE_MUESTRAS', label: 'Gestionar Muestras' },
-  { id: 'VIEW_REPORTS', label: 'Ver Reportes' },
-  { id: 'MANAGE_SYSTEM', label: 'Gestionar Sistema' }
-];
+const PERMISOS_DISPONIBLES = getAvailablePermissions();
 
 export default function RoleForm({ role, onSave, onCancel }) {
   const [formData, setFormData] = useState({
