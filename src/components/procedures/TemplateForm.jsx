@@ -44,10 +44,24 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
   }, [template]);
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
+    setFormData(prev => {
+      const newData = {
+        ...prev,
+        [field]: value
+      };
+      
+      // Si se están cambiando los analysis_ids, recalcular totales
+      if (field === 'analysis_ids') {
+        const selectedAnalyses = analyses.filter(a => value.includes(a.idAnalisis));
+        const totalPrice = selectedAnalyses.reduce((sum, a) => sum + (a.precioClp || 0), 0);
+        const totalHours = selectedAnalyses.reduce((sum, a) => sum + (a.duracionEstimadaHoras || 0), 0);
+        
+        newData.total_price = totalPrice;
+        newData.estimated_duration_days = Math.ceil(totalHours / 24);
+      }
+      
+      return newData;
+    });
   };
 
   const handleSampleTypeToggle = (type) => {
@@ -65,9 +79,9 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
         ? prev.analysis_ids.filter(id => id !== analysisId)
         : [...prev.analysis_ids, analysisId];
       
-      const selectedAnalyses = analyses.filter(a => newAnalysisIds.includes(a.id));
-      const totalPrice = selectedAnalyses.reduce((sum, a) => sum + (a.price || 0), 0);
-      const totalHours = selectedAnalyses.reduce((sum, a) => sum + (a.estimated_duration_hours || 0), 0);
+      const selectedAnalyses = analyses.filter(a => newAnalysisIds.includes(a.idAnalisis));
+      const totalPrice = selectedAnalyses.reduce((sum, a) => sum + (a.precioClp || 0), 0);
+      const totalHours = selectedAnalyses.reduce((sum, a) => sum + (a.duracionEstimadaHoras || 0), 0);
       
       return {
         ...prev,
@@ -84,12 +98,12 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
   };
 
   const filteredAnalyses = analyses.filter(analysis =>
-    analysis.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    analysis.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    analysis.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    analysis.nombreAnalisis?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    analysis.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    analysis.categoria?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const selectedAnalyses = analyses.filter(a => formData.analysis_ids.includes(a.id));
+  const selectedAnalyses = analyses.filter(a => formData.analysis_ids.includes(a.idAnalisis));
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -166,14 +180,27 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
                 <Label className="text-lg font-semibold">
                   Análisis Incluidos * ({formData.analysis_ids.length} seleccionados)
                 </Label>
-                <div className="relative w-64">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <Input
-                    placeholder="Buscar análisis..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
+                <div className="flex items-center gap-3">
+                  {formData.analysis_ids.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleInputChange('analysis_ids', [])}
+                      className="text-red-600 hover:text-red-700 hover:border-red-300"
+                    >
+                      Deseleccionar todo
+                    </Button>
+                  )}
+                  <div className="relative w-64">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      placeholder="Buscar análisis..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
                 </div>
               </div>
               
@@ -187,33 +214,33 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
                     ) : (
                       <div className="divide-y">
                         {filteredAnalyses.map((analysis) => (
-                          <div key={analysis.id} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                          <div key={analysis.idAnalisis} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
                             <div className="flex items-center gap-3 flex-1">
                               <Checkbox
-                                checked={formData.analysis_ids.includes(analysis.id)}
-                                onCheckedChange={() => handleAnalysisToggle(analysis.id)}
+                                checked={formData.analysis_ids.includes(analysis.idAnalisis)}
+                                onCheckedChange={() => handleAnalysisToggle(analysis.idAnalisis)}
                               />
                               <div className="flex-1">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <p className="font-medium">{analysis.name}</p>
-                                  <Badge variant="outline" className="text-xs">{analysis.code}</Badge>
+                                  <p className="font-medium">{analysis.nombreAnalisis}</p>
+                                  <Badge variant="outline" className="text-xs">{analysis.codigo}</Badge>
                                   <Badge className="text-xs bg-purple-100 text-purple-800">
-                                    {analysis.category}
+                                    {analysis.categoria}
                                   </Badge>
                                 </div>
-                                <p className="text-sm text-gray-600">{analysis.method}</p>
-                                {analysis.parameters && analysis.parameters.length > 0 && (
+                                <p className="text-sm text-gray-600">{analysis.metodoEnsayo || 'No especificado'}</p>
+                                {analysis.parametrosMedir?.parametros && analysis.parametrosMedir.parametros.length > 0 && (
                                   <div className="flex items-center gap-1 mt-1">
                                     <span className="text-xs text-gray-500">
-                                      {analysis.parameters.length} parámetros
+                                      {analysis.parametrosMedir.parametros.length} parámetros
                                     </span>
                                   </div>
                                 )}
                               </div>
                             </div>
                             <div className="text-right ml-4">
-                              <p className="font-semibold text-lg">${analysis.price?.toLocaleString() || 0}</p>
-                              <p className="text-sm text-gray-600">{analysis.estimated_duration_hours || 0}h</p>
+                              <p className="font-semibold text-lg">${analysis.precioClp?.toLocaleString() || 0}</p>
+                              <p className="text-sm text-gray-600">{analysis.duracionEstimadaHoras || 0}h</p>
                             </div>
                           </div>
                         ))}

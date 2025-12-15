@@ -17,6 +17,7 @@ const categoryConfig = {
   "Físico-Químico": { color: "bg-blue-100 text-blue-800 border-blue-200" },
   "Metales Pesados": { color: "bg-orange-100 text-orange-800 border-orange-200" },
   "Orgánicos": { color: "bg-green-100 text-green-800 border-green-200" },
+  "GENERAL": { color: "bg-indigo-100 text-indigo-800 border-indigo-200" },
   "Otros": { color: "bg-gray-100 text-gray-800 border-gray-200" }
 };
 
@@ -60,6 +61,60 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* Alerta de análisis incompleto */}
+          {(!analysis.descripcion || !analysis.metodoEnsayo || !analysis.duracionEstimadaHoras || !analysis.precioClp) && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 text-amber-800 mb-2">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <span className="font-medium">Análisis Incompleto</span>
+              </div>
+              <p className="text-amber-700 text-sm">
+                Este análisis no tiene toda la información requerida. Se recomienda completar los datos faltantes antes de usarlo en órdenes de trabajo.
+              </p>
+            </div>
+          )}
+
+          {/* Información crítica para laboratorio */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-blue-900 mb-3 flex items-center gap-2">
+              <FlaskConical className="w-5 h-5" />
+              Información Crítica del Análisis
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="bg-white rounded p-3 border border-blue-100">
+                <div className="font-medium text-blue-800">Tiempo de Ejecución</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {analysis.duracionEstimadaHoras || '—'}
+                  {analysis.duracionEstimadaHoras && 'h'}
+                </div>
+                {!analysis.duracionEstimadaHoras && (
+                  <div className="text-xs text-red-500">No especificado</div>
+                )}
+              </div>
+              <div className="bg-white rounded p-3 border border-green-100">
+                <div className="font-medium text-green-800">Costo del Análisis</div>
+                <div className="text-2xl font-bold text-green-600">
+                  {analysis.precioClp ? `$${analysis.precioClp.toLocaleString()}` : '—'}
+                </div>
+                <div className="text-xs text-green-600">
+                  {analysis.precioClp ? 'CLP' : 'No especificado'}
+                </div>
+              </div>
+              <div className="bg-white rounded p-3 border border-orange-100">
+                <div className="font-medium text-orange-800">Tiempo de Entrega</div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {analysis.diasEntrega || '—'}
+                  {analysis.diasEntrega && ' días'}
+                </div>
+                {!analysis.diasEntrega && (
+                  <div className="text-xs text-red-500">No especificado</div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Información básica */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card>
@@ -85,105 +140,133 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Clock className="w-5 h-5" />
-                  Detalles Operativos
+                  Protocolo de Ejecución
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {analysis.duracionEstimadaHoras && (
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-gray-700">Duración:</span>
-                    <span className="text-gray-600">{analysis.duracionEstimadaHoras} horas</span>
+                <div>
+                  <span className="font-medium text-gray-700">Método de Ensayo:</span>
+                  <p className="text-gray-600 mt-1 font-mono text-sm bg-gray-50 p-2 rounded">
+                    {analysis.metodoEnsayo || 'No especificado'}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Estado del Protocolo:</span>
+                  <div className="mt-1">
+                    <Badge variant={analysis.estado === 'Activo' ? 'default' : 'secondary'}>
+                      {analysis.estado}
+                    </Badge>
                   </div>
-                )}
-                {analysis.precioClp && (
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-gray-700">Precio:</span>
-                    <span className="text-gray-600">${analysis.precioClp.toLocaleString()} CLP</span>
-                  </div>
-                )}
-                {analysis.diasEntrega && (
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-gray-700">Días de Entrega:</span>
-                    <span className="text-gray-600">{analysis.diasEntrega} días</span>
-                  </div>
-                )}
+                </div>
               </CardContent>
             </Card>
           </div>
 
           {/* Tipos de muestra aplicables */}
-          {analysis.tiposMuestraAplicables && analysis.tiposMuestraAplicables.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Tipos de Muestra Aplicables
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Tipos de Muestra Aplicables
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {analysis.tiposMuestraAplicables && analysis.tiposMuestraAplicables.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {analysis.tiposMuestraAplicables.map((tipo, index) => (
                     <Badge key={index} variant="outline" className="bg-gray-50">
-                      {typeof tipo === 'object' ? JSON.stringify(tipo) : String(tipo)}
+                      {tipo}
                     </Badge>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <div className="text-gray-500 italic text-center py-4">
+                  No se han especificado tipos de muestra aplicables
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Parámetros a medir */}
-          {analysis.parametrosMedir && Object.keys(analysis.parametrosMedir).length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Parámetros a Medir
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Parámetros a Medir
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {analysis.parametrosMedir && analysis.parametrosMedir.parametros && analysis.parametrosMedir.parametros.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {Object.entries(analysis.parametrosMedir).map(([parametro, detalles], index) => (
+                  {analysis.parametrosMedir.parametros.map((parametro, index) => (
                     <div key={index} className="border rounded-lg p-3 bg-gray-50">
-                      <h4 className="font-semibold text-gray-900">{parametro}</h4>
+                      <h4 className="font-semibold text-gray-900">{parametro.nombre}</h4>
                       <div className="text-sm text-gray-600 mt-1 space-y-1">
-                        {detalles && typeof detalles === 'object' && detalles.unidad && (
-                          <div><span className="font-medium">Unidad:</span> {String(detalles.unidad)}</div>
+                        {parametro.unidad && (
+                          <div><span className="font-medium">Unidad:</span> {parametro.unidad}</div>
                         )}
-                        {detalles && typeof detalles === 'object' && detalles.limiteDeteccion && (
-                          <div><span className="font-medium">Límite de Detección:</span> {String(detalles.limiteDeteccion)}</div>
+                        {parametro.limite_deteccion && (
+                          <div><span className="font-medium">Límite de Detección:</span> {parametro.limite_deteccion}</div>
                         )}
-                        {detalles && typeof detalles === 'object' && detalles.limiteMaximo && (
-                          <div><span className="font-medium">Límite Máximo:</span> {String(detalles.limiteMaximo)}</div>
+                        {parametro.limite_maximo && (
+                          <div><span className="font-medium">Límite Máximo:</span> {parametro.limite_maximo}</div>
                         )}
                       </div>
                     </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <div className="text-gray-500 italic text-center py-4">
+                  No se han definido parámetros para este análisis
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Equipos requeridos */}
-          {analysis.equiposRequeridos && Object.keys(analysis.equiposRequeridos).length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Equipos Requeridos
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {Object.values(analysis.equiposRequeridos).map((equipo, index) => (
-                    <Badge key={index} variant="outline" className="bg-blue-50 border-blue-200">
-                      {typeof equipo === 'object' ? JSON.stringify(equipo) : String(equipo)}
-                    </Badge>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Equipos Requeridos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {analysis.equiposRequeridos && analysis.equiposRequeridos.equipos && analysis.equiposRequeridos.equipos.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {analysis.equiposRequeridos.equipos.map((equipo, index) => (
+                    <div key={index} className="border rounded-lg p-3 bg-blue-50 border-blue-200">
+                      <h4 className="font-semibold text-blue-900">{equipo.nombre}</h4>
+                      <div className="text-sm text-blue-700 mt-1 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">Estado:</span>
+                          <Badge variant={equipo.estado === 'Activo' ? 'default' : 'secondary'} className="text-xs">
+                            {equipo.estado}
+                          </Badge>
+                        </div>
+                        {equipo.precio_clp && (
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">Precio:</span>
+                            <span>${equipo.precio_clp.toLocaleString()} CLP</span>
+                          </div>
+                        )}
+                        {equipo.duracion_horas && (
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">Duración:</span>
+                            <span>{equipo.duracion_horas} horas</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <div className="text-gray-500 italic text-center py-4">
+                  No se han especificado equipos requeridos para este análisis
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Fechas */}
           <Card>

@@ -48,9 +48,9 @@ export default function AnalysisPage() {
     
     if (searchTerm) {
       filtered = filtered.filter(analysis => 
-        analysis.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        analysis.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        analysis.method?.toLowerCase().includes(searchTerm.toLowerCase())
+        analysis.nombreAnalisis?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        analysis.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        analysis.metodoEnsayo?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
     
@@ -101,7 +101,7 @@ export default function AnalysisPage() {
   const handleAnalysisSubmit = async (analysisData) => {
     try {
       if (selectedAnalysis) {
-        await Analysis.update(selectedAnalysis.id, analysisData);
+        await Analysis.update(selectedAnalysis.idAnalisis, analysisData);
       } else {
         await Analysis.create(analysisData);
       }
@@ -132,12 +132,12 @@ export default function AnalysisPage() {
     try {
       const duplicatedData = {
         ...analysis,
-        name: `${analysis.name} (Copia)`,
-        code: `${analysis.code}_COPY_${Date.now().toString().slice(-4)}`
+        nombreAnalisis: `${analysis.nombreAnalisis} (Copia)`,
+        codigo: `${analysis.codigo}_COPY_${Date.now().toString().slice(-4)}`
       };
-      delete duplicatedData.id;
-      delete duplicatedData.created_date;
-      delete duplicatedData.updated_date;
+      delete duplicatedData.idAnalisis;
+      delete duplicatedData.fechaCreacion;
+      delete duplicatedData.fechaActualizacion;
       
       await Analysis.create(duplicatedData);
       loadData();
@@ -225,7 +225,7 @@ export default function AnalysisPage() {
               </Card>
             ) : (
               filteredAnalyses.map((analysis) => (
-                <Card key={analysis.id} className="hover:shadow-lg transition-shadow">
+                <Card key={analysis.idAnalisis} className="hover:shadow-lg transition-shadow">
                   <CardContent className="p-6">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-4">
@@ -236,15 +236,15 @@ export default function AnalysisPage() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-3">
                             <h3 className="text-lg font-semibold text-gray-900">
-                              {analysis.name}
+                              {analysis.nombreAnalisis}
                             </h3>
                             <Badge className="text-xs bg-gray-100 text-gray-800">
-                              {analysis.code}
+                              {analysis.codigo}
                             </Badge>
-                            <Badge className={`${categoryConfig[analysis.category]?.color || categoryConfig.otros.color}`}>
-                              {categoryConfig[analysis.category]?.label || "Otros"}
+                            <Badge className={`${categoryConfig[analysis.categoria?.toLowerCase()]?.color || categoryConfig.otros.color}`}>
+                              {analysis.categoria || "Otros"}
                             </Badge>
-                            {analysis.status === 'inactivo' && (
+                            {analysis.estado === 'Inactivo' && (
                               <Badge variant="secondary">
                                 Inactivo
                               </Badge>
@@ -252,19 +252,19 @@ export default function AnalysisPage() {
                           </div>
                           
                           <div className="flex items-center gap-4 text-sm text-gray-600">
-                            <span>Método: {analysis.method}</span>
-                            {analysis.estimated_duration_hours && (
-                              <span>Duración: {analysis.estimated_duration_hours}h</span>
+                            <span>Método: {analysis.metodoEnsayo || 'No especificado'}</span>
+                            {analysis.duracionEstimadaHoras && (
+                              <span>Duración: {analysis.duracionEstimadaHoras}h</span>
                             )}
-                            {analysis.price && (
-                              <span>Precio: ${analysis.price}</span>
+                            {analysis.precioClp && (
+                              <span>Precio: ${analysis.precioClp.toLocaleString()}</span>
                             )}
                           </div>
                           
-                          {analysis.parameters && analysis.parameters.length > 0 && (
+                          {analysis.parametrosMedir?.parametros && analysis.parametrosMedir.parametros.length > 0 && (
                             <div className="text-sm text-gray-500">
-                              Parámetros: {analysis.parameters.slice(0, 3).map(p => p.parameter_name).join(', ')}
-                              {analysis.parameters.length > 3 && ` (+${analysis.parameters.length - 3} más)`}
+                              Parámetros: {analysis.parametrosMedir.parametros.slice(0, 3).map(p => p.nombre).join(', ')}
+                              {analysis.parametrosMedir.parametros.length > 3 && ` (+${analysis.parametrosMedir.parametros.length - 3} más)`}
                             </div>
                           )}
                         </div>

@@ -105,17 +105,17 @@ export default function AnalysisList({ analyses, isLoading, onView, onEdit, onDe
                       </p>
                     )}
                     
-                    {analysis.parametrosMedir && Object.keys(analysis.parametrosMedir).length > 0 && (
+                    {analysis.parametrosMedir && analysis.parametrosMedir.parametros && analysis.parametrosMedir.parametros.length > 0 && (
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-xs text-gray-500">Parámetros:</span>
-                        {Object.keys(analysis.parametrosMedir).slice(0, 3).map((param, idx) => (
+                        {analysis.parametrosMedir.parametros.slice(0, 3).map((param, idx) => (
                           <Badge key={`${analysis.idAnalisis || analysis.codigo}-param-${idx}`} variant="outline" className="text-xs">
-                            {param}
+                            {param.nombre}
                           </Badge>
                         ))}
-                        {Object.keys(analysis.parametrosMedir).length > 3 && (
+                        {analysis.parametrosMedir.parametros.length > 3 && (
                           <Badge variant="outline" className="text-xs">
-                            +{Object.keys(analysis.parametrosMedir).length - 3} más
+                            +{analysis.parametrosMedir.parametros.length - 3} más
                           </Badge>
                         )}
                       </div>

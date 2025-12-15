@@ -45,12 +45,6 @@ export function EquipmentCombobox({ value, onValueChange, placeholder = "Selecci
     loadEquipment();
   }, []);
 
-  // Find the selected equipment to display its name
-  const selectedEquipment = equipment.find((item) => {
-    const itemName = item.name || item.nombre || item.equipmentName;
-    return itemName === value;
-  });
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -79,18 +73,15 @@ export function EquipmentCombobox({ value, onValueChange, placeholder = "Selecci
               {error ? error : "No se encontraron equipos."}
             </CommandEmpty>
             <CommandGroup>
-              {equipment.map((item) => {
+              {equipment.map((item, index) => {
                 // Handle different possible object structures
-                const itemId = item.id || item.equipoId;
-                const itemName = item.name || item.nombre || item.equipmentName;
-                const itemValue = itemId ? itemId.toString() : itemName;
+                const itemName = item.name || item.nombre || item.equipmentName || item.equipment_name || `Equipo ${index + 1}`;
                 
                 return (
                   <CommandItem
-                    key={itemValue}
+                    key={`equipment-${index}-${itemName}`}
                     value={itemName}
-                    onSelect={(currentValue) => {
-                      // Use the selected name directly
+                    onSelect={() => {
                       onValueChange(itemName);
                       setOpen(false);
                     }}
