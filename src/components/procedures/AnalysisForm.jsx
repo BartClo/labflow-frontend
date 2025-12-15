@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Plus, Minus } from "lucide-react";
 import { EquipmentCombobox } from "@/components/ui/equipment-combobox";
+import { SuppliesCombobox } from "@/components/ui/supplies-combobox";
 
 const categories = [
   { value: "Microbiológico", label: "Microbiológico" },
@@ -35,6 +36,8 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
     sample_types: analysis?.sample_types || [],
     parameters: analysis?.parameters || [{ parameter_name: '', unit: '', detection_limit: '', max_limit: '' }],
     required_equipment: analysis?.required_equipment || [''],
+    required_supplies: analysis?.required_supplies || [''],
+    required_reagents: analysis?.required_reagents || [''],
     estimated_duration_hours: analysis?.estimated_duration_hours || '',
     price: analysis?.price || '',
     status: analysis?.status || 'activo'
@@ -102,6 +105,52 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
     }));
   };
 
+  const addSupply = () => {
+    setFormData(prev => ({
+      ...prev,
+      required_supplies: [...prev.required_supplies, '']
+    }));
+  };
+
+  const removeSupply = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      required_supplies: prev.required_supplies.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateSupply = (index, value) => {
+    setFormData(prev => ({
+      ...prev,
+      required_supplies: prev.required_supplies.map((supply, i) => 
+        i === index ? value : supply
+      )
+    }));
+  };
+
+  const addReagent = () => {
+    setFormData(prev => ({
+      ...prev,
+      required_reagents: [...prev.required_reagents, '']
+    }));
+  };
+
+  const removeReagent = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      required_reagents: prev.required_reagents.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateReagent = (index, value) => {
+    setFormData(prev => ({
+      ...prev,
+      required_reagents: prev.required_reagents.map((reagent, i) => 
+        i === index ? value : reagent
+      )
+    }));
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const submitData = {
@@ -109,7 +158,9 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
       estimated_duration_hours: formData.estimated_duration_hours ? Number(formData.estimated_duration_hours) : undefined,
       price: formData.price ? Number(formData.price) : undefined,
       parameters: formData.parameters.filter(p => p.parameter_name),
-      required_equipment: formData.required_equipment.filter(e => e)
+      required_equipment: formData.required_equipment.filter(e => e),
+      required_supplies: formData.required_supplies.filter(s => s),
+      required_reagents: formData.required_reagents.filter(r => r)
     };
     onSubmit(submitData);
   };
@@ -297,6 +348,70 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
                       variant="outline"
                       size="icon"
                       onClick={() => removeEquipment(index)}
+                    >
+                      <Minus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Insumos requeridos */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Insumos Requeridos</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addSupply}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Insumo
+                </Button>
+              </div>
+              
+              <div className="space-y-2">
+                {formData.required_supplies.map((supply, index) => (
+                  <div key={index} className="flex gap-2">
+                    <div className="flex-1">
+                      <SuppliesCombobox
+                        value={supply}
+                        onValueChange={(value) => updateSupply(index, value)}
+                        placeholder="Seleccionar insumo..."
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => removeSupply(index)}
+                    >
+                      <Minus className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Reactivos requeridos */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Reactivos Requeridos</Label>
+                <Button type="button" variant="outline" size="sm" onClick={addReagent}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Reactivo
+                </Button>
+              </div>
+              
+              <div className="space-y-2">
+                {formData.required_reagents.map((reagent, index) => (
+                  <div key={index} className="flex gap-2">
+                    <Input
+                      placeholder="Nombre del reactivo"
+                      value={reagent}
+                      onChange={(e) => updateReagent(index, e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => removeReagent(index)}
                     >
                       <Minus className="w-4 h-4" />
                     </Button>

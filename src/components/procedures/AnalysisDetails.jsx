@@ -268,6 +268,56 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
             </CardContent>
           </Card>
 
+          {/* Insumos requeridos */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Insumos Requeridos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {analysis.required_supplies && analysis.required_supplies.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {analysis.required_supplies.map((supply, index) => (
+                    <Badge key={index} variant="outline" className="bg-green-50 border-green-200 text-green-800">
+                      {supply}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-gray-500 italic text-center py-4">
+                  No se han especificado insumos requeridos para este análisis
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Reactivos requeridos */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Reactivos Requeridos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {analysis.required_reagents && analysis.required_reagents.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {analysis.required_reagents.map((reagent, index) => (
+                    <Badge key={index} variant="outline" className="bg-orange-50 border-orange-200 text-orange-800">
+                      {reagent}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-gray-500 italic text-center py-4">
+                  No se han especificado reactivos requeridos para este análisis
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Fechas */}
           <Card>
             <CardHeader className="pb-3">

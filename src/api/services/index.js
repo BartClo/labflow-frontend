@@ -14,3 +14,4 @@ export { default as quotesService } from './quotes';
 export { default as filesService } from './files';
 export { default as administrationService } from './administration';
 export * as equipmentService from './equipment';
+export * as suppliesService from './supplies';
