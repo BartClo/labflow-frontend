@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { X, Plus, Minus } from "lucide-react";
+import { EquipmentCombobox } from "@/components/ui/equipment-combobox";
 
 const categories = [
   { value: "Microbiológico", label: "Microbiológico" },
@@ -284,11 +285,13 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
               <div className="space-y-2">
                 {formData.required_equipment.map((equipment, index) => (
                   <div key={index} className="flex gap-2">
-                    <Input
-                      placeholder="Nombre del equipo"
-                      value={equipment}
-                      onChange={(e) => updateEquipment(index, e.target.value)}
-                    />
+                    <div className="flex-1">
+                      <EquipmentCombobox
+                        value={equipment}
+                        onValueChange={(value) => updateEquipment(index, value)}
+                        placeholder="Seleccionar equipo..."
+                      />
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
