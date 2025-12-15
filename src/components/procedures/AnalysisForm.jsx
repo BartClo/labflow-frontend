@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { X, Plus, Minus } from "lucide-react";
 import { EquipmentCombobox } from "@/components/ui/equipment-combobox";
 import { SuppliesCombobox } from "@/components/ui/supplies-combobox";
+import { ReagentsCombobox } from "@/components/ui/reagents-combobox";
 
 const categories = [
   { value: "Microbiológico", label: "Microbiológico" },
@@ -402,11 +403,13 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
               <div className="space-y-2">
                 {formData.required_reagents.map((reagent, index) => (
                   <div key={index} className="flex gap-2">
-                    <Input
-                      placeholder="Nombre del reactivo"
-                      value={reagent}
-                      onChange={(e) => updateReagent(index, e.target.value)}
-                    />
+                    <div className="flex-1">
+                      <ReagentsCombobox
+                        value={reagent}
+                        onValueChange={(value) => updateReagent(index, value)}
+                        placeholder="Seleccionar reactivo..."
+                      />
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
