@@ -95,6 +95,18 @@ export default function ProceduresPage() {
           }
           return acc;
         }, {}),
+        insumosRequeridos: analysisData.required_supplies.reduce((acc, supply, index) => {
+          if (supply) {
+            acc[`insumo${index + 1}`] = supply;
+          }
+          return acc;
+        }, {}),
+        reactivosRequeridos: analysisData.required_reagents.reduce((acc, reagent, index) => {
+          if (reagent) {
+            acc[`reactivo${index + 1}`] = reagent;
+          }
+          return acc;
+        }, {}),
         duracionEstimadaHoras: analysisData.estimated_duration_hours,
         precioClp: analysisData.price,
         diasEntrega: 3, // Default value
@@ -323,6 +335,8 @@ export default function ProceduresPage() {
             }));
             
             const equipment = Object.values(selectedAnalysis.equiposRequeridos || {}).filter(eq => eq);
+            const supplies = Object.values(selectedAnalysis.insumosRequeridos || {}).filter(supply => supply);
+            const reagents = Object.values(selectedAnalysis.reactivosRequeridos || {}).filter(reagent => reagent);
             
             const formattedAnalysis = {
               name: selectedAnalysis.nombreAnalisis,
@@ -333,6 +347,8 @@ export default function ProceduresPage() {
               sample_types: selectedAnalysis.tiposMuestraAplicables || [],
               parameters: parameters.length > 0 ? parameters : [{ parameter_name: '', unit: '', detection_limit: '', max_limit: '' }],
               required_equipment: equipment.length > 0 ? equipment : [''],
+              required_supplies: supplies.length > 0 ? supplies : [''],
+              required_reagents: reagents.length > 0 ? reagents : [''],
               estimated_duration_hours: selectedAnalysis.duracionEstimadaHoras,
               price: selectedAnalysis.precioClp,
               status: selectedAnalysis.estado?.toLowerCase() === 'activo' ? 'activo' : 'inactivo'

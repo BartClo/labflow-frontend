@@ -196,30 +196,63 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {analysis.parametrosMedir && analysis.parametrosMedir.parametros && analysis.parametrosMedir.parametros.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {analysis.parametrosMedir.parametros.map((parametro, index) => (
-                    <div key={index} className="border rounded-lg p-3 bg-gray-50">
-                      <h4 className="font-semibold text-gray-900">{parametro.nombre}</h4>
-                      <div className="text-sm text-gray-600 mt-1 space-y-1">
-                        {parametro.unidad && (
-                          <div><span className="font-medium">Unidad:</span> {parametro.unidad}</div>
-                        )}
-                        {parametro.limite_deteccion && (
-                          <div><span className="font-medium">Límite de Detección:</span> {parametro.limite_deteccion}</div>
-                        )}
-                        {parametro.limite_maximo && (
-                          <div><span className="font-medium">Límite Máximo:</span> {parametro.limite_maximo}</div>
-                        )}
+              {(() => {
+                let parametros = [];
+                
+                if (analysis.parametrosMedir) {
+                  if (Array.isArray(analysis.parametrosMedir)) {
+                    // Formato nuevo: array de objetos
+                    parametros = analysis.parametrosMedir;
+                  } else if (typeof analysis.parametrosMedir === 'object') {
+                    // Formato antiguo: objeto con claves y objetos anidados
+                    parametros = Object.entries(analysis.parametrosMedir).map(([key, value]) => ({
+                      nombre: key,
+                      ...value
+                    }));
+                  }
+                }
+
+                return parametros && parametros.length > 0 ? (
+                  <div className="space-y-3">
+                    {parametros.map((parametro, index) => (
+                      <div key={index} className="text-gray-700">
+                        <div className="font-medium text-gray-900 mb-1">• {parametro.nombre}</div>
+                        <div className="text-sm text-gray-600 ml-4 space-y-1">
+                          {parametro.unidad && (
+                            <div>Unidad: {parametro.unidad}</div>
+                          )}
+                          {parametro.valorMinimoNormativa && (
+                            <div>Valor Mínimo: {parametro.valorMinimoNormativa}</div>
+                          )}
+                          {parametro.valorMaximoNormativa && (
+                            <div>Valor Máximo: {parametro.valorMaximoNormativa}</div>
+                          )}
+                          {parametro.metodoDeteccion && (
+                            <div>Método: {parametro.metodoDeteccion}</div>
+                          )}
+                          {/* Campos adicionales para formato antiguo */}
+                          {parametro.valor && (
+                            <div>Valor: {parametro.valor}</div>
+                          )}
+                          {parametro.limite && (
+                            <div>Límite: {parametro.limite}</div>
+                          )}
+                          {parametro.limiteDeteccion && (
+                            <div>Límite de Detección: {parametro.limiteDeteccion}</div>
+                          )}
+                          {parametro.limiteMaximo && (
+                            <div>Límite Máximo: {parametro.limiteMaximo}</div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-gray-500 italic text-center py-4">
-                  No se han definido parámetros para este análisis
-                </div>
-              )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-center py-4">
+                    No se han definido parámetros para este análisis
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
@@ -232,39 +265,36 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {analysis.equiposRequeridos && analysis.equiposRequeridos.equipos && analysis.equiposRequeridos.equipos.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {analysis.equiposRequeridos.equipos.map((equipo, index) => (
-                    <div key={index} className="border rounded-lg p-3 bg-blue-50 border-blue-200">
-                      <h4 className="font-semibold text-blue-900">{equipo.nombre}</h4>
-                      <div className="text-sm text-blue-700 mt-1 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">Estado:</span>
-                          <Badge variant={equipo.estado === 'Activo' ? 'default' : 'secondary'} className="text-xs">
-                            {equipo.estado}
-                          </Badge>
-                        </div>
-                        {equipo.precio_clp && (
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">Precio:</span>
-                            <span>${equipo.precio_clp.toLocaleString()} CLP</span>
-                          </div>
-                        )}
-                        {equipo.duracion_horas && (
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">Duración:</span>
-                            <span>{equipo.duracion_horas} horas</span>
-                          </div>
-                        )}
+              {(() => {
+                let equipos = [];
+                
+                if (analysis.equiposRequeridos) {
+                  if (Array.isArray(analysis.equiposRequeridos)) {
+                    // Formato nuevo: array de objetos
+                    equipos = analysis.equiposRequeridos;
+                  } else if (typeof analysis.equiposRequeridos === 'object') {
+                    // Formato antiguo: objeto con claves y valores string
+                    equipos = Object.entries(analysis.equiposRequeridos).map(([key, value]) => ({
+                      nombre: typeof value === 'string' ? value : value.nombre || key,
+                      cantidad: typeof value === 'object' ? value.cantidad : 1
+                    }));
+                  }
+                }
+
+                return equipos && equipos.length > 0 ? (
+                  <div className="space-y-2">
+                    {equipos.map((equipo, index) => (
+                      <div key={index} className="text-gray-700">
+                        • {equipo.nombre || equipo}
                       </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-gray-500 italic text-center py-4">
-                  No se han especificado equipos requeridos para este análisis
-                </div>
-              )}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-center py-4">
+                    No se han especificado equipos requeridos para este análisis
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
@@ -277,19 +307,37 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {analysis.required_supplies && analysis.required_supplies.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {analysis.required_supplies.map((supply, index) => (
-                    <Badge key={index} variant="outline" className="bg-green-50 border-green-200 text-green-800">
-                      {supply}
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-gray-500 italic text-center py-4">
-                  No se han especificado insumos requeridos para este análisis
-                </div>
-              )}
+              {(() => {
+                let insumos = [];
+                
+                if (analysis.insumosRequeridos) {
+                  if (Array.isArray(analysis.insumosRequeridos)) {
+                    // Formato nuevo: array de objetos
+                    insumos = analysis.insumosRequeridos;
+                  } else if (typeof analysis.insumosRequeridos === 'object') {
+                    // Formato objeto: convertir a array
+                    insumos = Object.entries(analysis.insumosRequeridos).map(([key, value]) => ({
+                      nombre: typeof value === 'string' ? value : value.nombre || key,
+                      cantidad: typeof value === 'object' ? value.cantidad : 1,
+                      unidad: typeof value === 'object' ? value.unidad : ''
+                    }));
+                  }
+                }
+
+                return insumos && insumos.length > 0 ? (
+                  <div className="space-y-2">
+                    {insumos.map((insumo, index) => (
+                      <div key={index} className="text-gray-700">
+                        • {insumo.nombre || insumo}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-center py-4">
+                    No se han especificado insumos requeridos para este análisis
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
@@ -302,19 +350,37 @@ export default function AnalysisDetails({ analysis, onEdit, onClose }) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {analysis.required_reagents && analysis.required_reagents.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {analysis.required_reagents.map((reagent, index) => (
-                    <Badge key={index} variant="outline" className="bg-orange-50 border-orange-200 text-orange-800">
-                      {reagent}
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-gray-500 italic text-center py-4">
-                  No se han especificado reactivos requeridos para este análisis
-                </div>
-              )}
+              {(() => {
+                let reactivos = [];
+                
+                if (analysis.reactivosRequeridos) {
+                  if (Array.isArray(analysis.reactivosRequeridos)) {
+                    // Formato nuevo: array de objetos
+                    reactivos = analysis.reactivosRequeridos;
+                  } else if (typeof analysis.reactivosRequeridos === 'object') {
+                    // Formato objeto: convertir a array
+                    reactivos = Object.entries(analysis.reactivosRequeridos).map(([key, value]) => ({
+                      nombre: typeof value === 'string' ? value : value.nombre || key,
+                      cantidad: typeof value === 'object' ? value.cantidad : 1,
+                      unidad: typeof value === 'object' ? value.unidad : ''
+                    }));
+                  }
+                }
+
+                return reactivos && reactivos.length > 0 ? (
+                  <div className="space-y-2">
+                    {reactivos.map((reactivo, index) => (
+                      <div key={index} className="text-gray-700">
+                        • {reactivo.nombre || reactivo}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-center py-4">
+                    No se han especificado reactivos requeridos para este análisis
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
 
