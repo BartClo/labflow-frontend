@@ -11,8 +11,30 @@ export const analysisService = {
    * Get all analyses
    */
   getAll: async (params = {}) => {
-    const response = await apiClient.get('/analisis', { params });
-    return response.data;
+    try {
+      console.log('🌐 Making API call to /analisis with params:', params);
+      const response = await apiClient.get('/analisis', { params });
+      console.log('📦 Raw analyses response:', response.data);
+      
+      // Handle paginated response - extract content array if present
+      if (response.data && response.data.content && Array.isArray(response.data.content)) {
+        console.log('📋 Extracted analyses from paginated response:', response.data.content);
+        return response.data.content;
+      }
+      
+      // Handle direct array response
+      if (Array.isArray(response.data)) {
+        console.log('📋 Direct array response:', response.data);
+        return response.data;
+      }
+      
+      // Fallback to empty array
+      console.log('⚠️ Unexpected response format, returning empty array');
+      return [];
+    } catch (error) {
+      console.error('❌ Error fetching analyses:', error);
+      throw error;
+    }
   },
 
   /**
@@ -101,16 +123,23 @@ export const analysisTemplatesService = {
     try {
       console.log('🌐 Making API call to /plantillas with params:', params);
       const response = await apiClient.get('/plantillas', { params });
-      console.log('📦 Raw API response:', response);
-      console.log('📋 Templates data:', response.data);
-      console.log('📊 Data type:', typeof response.data);
-      console.log('📈 Data length:', Array.isArray(response.data) ? response.data.length : 'Not an array');
+      console.log('📦 Raw templates response:', response.data);
       
-      // Ensure we always return an array
-      const templates = Array.isArray(response.data) ? response.data : [];
-      console.log('✅ Processed templates:', templates);
+      // Handle paginated response - extract content array if present
+      if (response.data && response.data.content && Array.isArray(response.data.content)) {
+        console.log('📋 Extracted templates from paginated response:', response.data.content);
+        return response.data.content;
+      }
       
-      return templates;
+      // Handle direct array response
+      if (Array.isArray(response.data)) {
+        console.log('📋 Direct array templates response:', response.data);
+        return response.data;
+      }
+      
+      // Fallback to empty array
+      console.log('⚠️ Unexpected templates response format, returning empty array');
+      return [];
     } catch (error) {
       console.error('❌ Error fetching analysis templates:', error);
       console.error('❌ Error response:', error.response?.data);
@@ -151,5 +180,9 @@ export const analysisTemplatesService = {
     return response.data;
   },
 };
+
+// Add backward compatibility aliases
+analysisService.list = analysisService.getAll;
+analysisTemplatesService.list = analysisTemplatesService.getAll;
 
 export default { analysisService, analysisTemplatesService };

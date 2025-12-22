@@ -56,15 +56,33 @@ export default function SamplesPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [samplesData, clientsData] = await Promise.all([
-        Sample.list('-reception_date'),
-        Client.list()
-      ]);
-      setSamples(samplesData);
-      setClients(clientsData);
-      setFilteredSamples(samplesData);
+      // Load data with better error handling
+      let samplesData = [];
+      let clientsData = [];
+      
+      try {
+        samplesData = await Sample.getAll();
+      } catch (sampleError) {
+        console.error('Error loading samples:', sampleError);
+        // Continue with empty samples array
+      }
+      
+      try {
+        clientsData = await Client.getAll();
+      } catch (clientError) {
+        console.error('Error loading clients:', clientError);
+        // Continue with empty clients array
+      }
+      
+      // Ensure samples is always an array
+      const samplesArray = Array.isArray(samplesData) ? samplesData : [];
+      const clientsArray = Array.isArray(clientsData) ? clientsData : [];
+      
+      setSamples(samplesArray);
+      setClients(clientsArray);
+      setFilteredSamples(samplesArray);
     } catch (error) {
-      console.error("Error loading data:", error);
+      console.error("Error in loadData:", error);
     }
     setIsLoading(false);
   }, []);
@@ -73,8 +91,14 @@ export default function SamplesPage() {
     loadData();
   }, [loadData]);
 
+  // Helper function to safely filter samples
+  const getSamplesCount = (status) => {
+    if (!Array.isArray(samples)) return 0;
+    return samples.filter(s => s.status === status).length;
+  };
+
   useEffect(() => {
-    if (searchTerm) {
+    if (searchTerm && Array.isArray(samples)) {
       const filtered = samples.filter(sample =>
         sample.internal_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         sample.client_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -82,7 +106,7 @@ export default function SamplesPage() {
       );
       setFilteredSamples(filtered);
     } else {
-      setFilteredSamples(samples);
+      setFilteredSamples(Array.isArray(samples) ? samples : []);
     }
   }, [searchTerm, samples]);
 
@@ -134,7 +158,7 @@ export default function SamplesPage() {
 
       {/* Estadísticas */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
+        <Card key="total-samples">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -145,39 +169,39 @@ export default function SamplesPage() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card key="received-samples">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Recibidas</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {samples.filter(s => s.status === 'recibida').length}
+                  {getSamplesCount('recibida')}
                 </p>
               </div>
               <FlaskConical className="w-8 h-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card key="in-analysis-samples">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">En Análisis</p>
                 <p className="text-2xl font-bold text-purple-600">
-                  {samples.filter(s => s.status === 'en_analisis').length}
+                  {getSamplesCount('en_analisis')}
                 </p>
               </div>
               <FlaskConical className="w-8 h-8 text-purple-600" />
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card key="completed-samples">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Completadas</p>
                 <p className="text-2xl font-bold text-green-600">
-                  {samples.filter(s => s.status === 'completada').length}
+                  {getSamplesCount('completada')}
                 </p>
               </div>
               <FlaskConical className="w-8 h-8 text-green-600" />
@@ -215,7 +239,7 @@ export default function SamplesPage() {
             </Card>
           ))
         ) : filteredSamples.length === 0 ? (
-          <Card>
+          <Card key="no-samples">
             <CardContent className="text-center py-12">
               <FlaskConical className="w-16 h-16 mx-auto mb-4 text-gray-400" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No hay muestras registradas</h3>
@@ -278,7 +302,7 @@ export default function SamplesPage() {
                         {sample.requested_tests && sample.requested_tests.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
                             {sample.requested_tests.slice(0, 3).map((test, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">
+                              <Badge key={`${sample.id}-test-${i}`} variant="outline" className="text-xs">
                                 {test}
                               </Badge>
                             ))}

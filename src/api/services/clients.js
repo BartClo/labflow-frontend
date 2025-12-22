@@ -15,7 +15,8 @@ export const clientsService = {
     const paramsObj = typeof params === 'string' ? { sort: params } : params || {};
     const response = await apiClient.get('/clientes', { params: paramsObj });
     // Map backend DTO fields to frontend model
-    return (response.data || []).map(mapClientDTOToModel);
+    const mappedClients = (response.data || []).map(mapClientDTOToModel);
+    return mappedClients;
   },
 
   /**
@@ -61,12 +62,6 @@ export const clientsService = {
   },
 };
 
-export default clientsService;
-
-// Backwards-compatible aliases used by some components
-// e.g. `Client.list()` in legacy code
-clientsService.list = clientsService.getAll;
-
 function mapClientDTOToModel(dto) {
   if (!dto) return dto;
   return {
@@ -97,3 +92,7 @@ function mapClientDTOToModel(dto) {
 //   "tipoCliente": "Empresa",
 //   "activo": true
 // }
+
+export default clientsService;
+// Backwards-compatible alias
+clientsService.list = clientsService.getAll;

@@ -48,7 +48,7 @@ export default defineConfig({
     // proxy para no pegarle directamente al backend todo se maneja llamando /api
         proxy: {
       '/api': {
-        target: 'http://localhost:8080',   //backend Spring Boot
+        target: 'https://labflow-backend-x7by.onrender.com',   //backend Spring Boot
         changeOrigin: true,
         secure: false,
                         // Preserve the `/api` prefix so requests like `/api/clientes` are
