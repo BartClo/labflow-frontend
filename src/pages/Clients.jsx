@@ -68,6 +68,70 @@ export default function ClientsPage() {
     loadClients();
   }, []);
 
+  // Reload stats when the component receives focus (useful when coming back from samples page)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        reloadClientStats();
+      }
+    };
+
+    const handleFocus = () => {
+      reloadClientStats();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [clients]); // Depend on clients so it only runs after clients are loaded
+
+  // Function to reload client statistics (useful when samples are created/updated)
+  const reloadClientStats = async () => {
+    try {
+      let samplesData = [];
+      let quotesData = [];
+      
+      try {
+        samplesData = await Sample.getAll();
+        samplesData = Array.isArray(samplesData) ? samplesData : [];
+      } catch (sampleError) {
+        console.error('Error reloading samples for stats:', sampleError);
+      }
+      
+      try {
+        quotesData = await Quote.getAll ? await Quote.getAll() : [];
+        quotesData = Array.isArray(quotesData) ? quotesData : [];
+      } catch (quoteError) {
+        console.error('Error reloading quotes for stats:', quoteError);
+      }
+      
+      // Recalculate statistics for existing clients
+      const stats = {};
+      clients.forEach(client => {
+        const clientSamples = samplesData.filter(sample => 
+          sample.client_id === client.id || sample.idCliente === client.id
+        );
+        
+        const clientQuotes = quotesData.filter(quote => 
+          quote.client_id === client.id || quote.idCliente === client.id
+        );
+        
+        stats[client.id] = {
+          quotes: clientQuotes.length,
+          samples: clientSamples.length
+        };
+      });
+      
+      setClientStats(stats);
+    } catch (error) {
+      console.error("Error reloading client stats:", error);
+    }
+  };
+
   useEffect(() => {
     applyFilters();
   }, [applyFilters]);
@@ -75,19 +139,58 @@ export default function ClientsPage() {
   const loadClients = async () => {
     setIsLoading(true);
     try {
-      // Only load clients for now - quotes and samples endpoints need to be implemented in backend
+      // Load clients
       const clientsData = await Client.list('-created_date');
+      const clientsArray = Array.isArray(clientsData) ? clientsData : [];
+      setClients(clientsArray);
       
-      setClients(clientsData);
+      // Load samples to calculate real statistics
+      let samplesData = [];
+      let quotesData = [];
       
-      // Initialize empty stats - will be populated when quotes/samples endpoints are available
+      try {
+        samplesData = await Sample.getAll();
+        samplesData = Array.isArray(samplesData) ? samplesData : [];
+        console.log('📊 Loaded samples for client stats:', samplesData.length);
+      console.log('🔍 Sample client IDs found:', [...new Set(samplesData.map(s => s.client_id || s.idCliente).filter(Boolean))]);
+      
+      console.log('📋 All clients loaded:', clientsArray.map(c => ({ id: c.id, name: c.name })));
+      } catch (sampleError) {
+        console.error('Error loading samples for stats:', sampleError);
+      }
+      
+      try {
+        quotesData = await Quote.getAll ? await Quote.getAll() : [];
+        quotesData = Array.isArray(quotesData) ? quotesData : [];
+        console.log('📊 Loaded quotes for client stats:', quotesData.length);
+      } catch (quoteError) {
+        console.error('Error loading quotes for stats:', quoteError);
+      }
+      
+      // Calculate real statistics for each client
       const stats = {};
-      clientsData.forEach(client => {
+      clientsArray.forEach(client => {
+        // Count samples for this client
+        const clientSamples = samplesData.filter(sample => {
+          return sample.client_id === client.id || sample.idCliente === client.id;
+        });
+        
+        // Count quotes for this client  
+        const clientQuotes = quotesData.filter(quote => 
+          quote.client_id === client.id || quote.idCliente === client.id
+        );
+        
         stats[client.id] = {
-          quotes: 0, // Will be populated when quotes endpoint is available
-          samples: 0 // Will be populated when samples endpoint is available
+          quotes: clientQuotes.length,
+          samples: clientSamples.length
         };
+        
+        if (clientSamples.length > 0) {
+          console.log(`📋 Client ${client.name} (ID: ${client.id}) has ${clientSamples.length} samples`);
+        }
       });
+      
+      console.log('📊 Final client statistics:', stats);
       setClientStats(stats);
       
     } catch (error) {

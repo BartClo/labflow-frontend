@@ -69,18 +69,25 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
     sample_type: sample?.sample_type || "agua",
     reception_date:
       sample?.reception_date || new Date().toISOString().slice(0, 16),
+    sampling_date:
+      sample?.sampling_date || new Date().toISOString().slice(0, 16),
     transport_conditions: {
       temperature: sample?.transport_conditions?.temperature || "",
+      temperature_unit: sample?.transport_conditions?.temperature_unit || "celsius",
       container_type: sample?.transport_conditions?.container_type || "",
       preservation: sample?.transport_conditions?.preservation || "",
     },
-    received_by: sample?.received_by || "",
+    received_by: sample?.received_by || "Técnico",
     sample_condition: sample?.sample_condition || "aceptable",
     requested_tests: sample?.requested_tests || [],
     completion_date: sample?.completion_date || "",
     observations: sample?.observations || "",
     priority: sample?.priority || "normal",
     status: sample?.status || "recibida",
+    // Campos adicionales para el backend
+    project_name: sample?.project_name || "",
+    request_number: sample?.request_number || "",
+    sample_volume: sample?.sample_volume || "",
   });
 
   const [templates, setTemplates] = useState([]);
@@ -391,17 +398,41 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="temperature">Temperatura</Label>
-                  <Input
-                    id="temperature"
-                    value={formData.transport_conditions.temperature}
-                    onChange={(e) =>
-                      handleInputChange(
-                        "transport_conditions.temperature",
-                        e.target.value
-                      )
-                    }
-                    placeholder="Ej: 4°C"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="temperature"
+                      type="number"
+                      step="0.1"
+                      min="-100"
+                      max="100"
+                      value={formData.transport_conditions.temperature}
+                      onChange={(e) =>
+                        handleInputChange(
+                          "transport_conditions.temperature",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Ej: 4"
+                      className="flex-1"
+                    />
+                    <Select
+                      value={formData.transport_conditions.temperature_unit}
+                      onValueChange={(value) =>
+                        handleInputChange(
+                          "transport_conditions.temperature_unit",
+                          value
+                        )
+                      }
+                    >
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="celsius">°C</SelectItem>
+                        <SelectItem value="fahrenheit">°F</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -482,6 +513,48 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
                   }
                   placeholder="Nombre del técnico"
                   required
+                />
+              </div>
+            </div>
+
+            {/* Información adicional de la muestra */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sampling_date">Fecha de Muestreo</Label>
+                <Input
+                  id="sampling_date"
+                  type="datetime-local"
+                  value={formData.sampling_date}
+                  onChange={(e) =>
+                    handleInputChange("sampling_date", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sample_volume">Volumen de Muestra (mL)</Label>
+                <Input
+                  id="sample_volume"
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={formData.sample_volume}
+                  onChange={(e) =>
+                    handleInputChange("sample_volume", e.target.value)
+                  }
+                  placeholder="Ej: 100"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="project_name">Proyecto (Opcional)</Label>
+                <Input
+                  id="project_name"
+                  value={formData.project_name}
+                  onChange={(e) =>
+                    handleInputChange("project_name", e.target.value)
+                  }
+                  placeholder="Nombre del proyecto"
                 />
               </div>
             </div>

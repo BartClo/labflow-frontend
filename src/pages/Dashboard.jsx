@@ -33,6 +33,7 @@ export default function Dashboard() {
     workOrders: 0
   });
   const [recentSamples, setRecentSamples] = useState([]);
+  const [allSamples, setAllSamples] = useState([]);  // Add this to track all samples
   const [urgentOrders, setUrgentOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -43,22 +44,68 @@ export default function Dashboard() {
   const loadDashboardData = async () => {
     setIsLoading(true);
     try {
-      const [clients, quotes, samples, workOrders] = await Promise.all([
-        Client.list(),
-        Quote.list(),
-        Sample.list('-reception_date', 10),
-        WorkOrder.list('-created_date', 10)
-      ]);
+      // Load data with proper error handling
+      let clientsData = [];
+      let quotesData = [];
+      let samplesData = [];
+      let workOrdersData = [];
+      
+      try {
+        clientsData = await Client.getAll();
+      } catch (clientError) {
+        console.error('Error loading clients:', clientError);
+      }
+      
+      try {
+        quotesData = await Quote.getAll ? await Quote.getAll() : [];
+      } catch (quoteError) {
+        console.error('Error loading quotes:', quoteError);
+        quotesData = [];
+      }
+      
+      try {
+        samplesData = await Sample.getAll();
+      } catch (sampleError) {
+        console.error('Error loading samples:', sampleError);
+      }
+      
+      try {
+        workOrdersData = await WorkOrder.getAll ? await WorkOrder.getAll() : [];
+      } catch (workOrderError) {
+        console.error('Error loading work orders:', workOrderError);
+        workOrdersData = [];
+      }
+      
+      // Ensure arrays
+      const clientsArray = Array.isArray(clientsData) ? clientsData : [];
+      const quotesArray = Array.isArray(quotesData) ? quotesData : [];
+      const samplesArray = Array.isArray(samplesData) ? samplesData : [];
+      const workOrdersArray = Array.isArray(workOrdersData) ? workOrdersData : [];
+      
+      console.log('📊 Dashboard data loaded:');
+      console.log('  - Clients:', clientsArray.length);
+      console.log('  - Quotes:', quotesArray.length);
+      console.log('  - Samples:', samplesArray.length);
+      console.log('  - Work Orders:', workOrdersArray.length);
+      console.log('  - Sample statuses:', samplesArray.map(s => s.status));
       
       setStats({
-        clients: clients.length,
-        quotes: quotes.length,
-        samples: samples.length,
-        workOrders: workOrders.length
+        clients: clientsArray.length,
+        quotes: quotesArray.length,
+        samples: samplesArray.filter(s => s.status !== 'completada' && s.status !== 'entregada').length,
+        workOrders: workOrdersArray.length
       });
       
-      setRecentSamples(samples);
-      setUrgentOrders(workOrders.filter(wo => wo.priority === 'urgente' || wo.priority === 'critica'));
+      // Sort samples by reception date (most recent first)
+      const sortedSamples = samplesArray.sort((a, b) => {
+        const dateA = new Date(a.reception_date || a.created_at || 0);
+        const dateB = new Date(b.reception_date || b.created_at || 0);
+        return dateB - dateA;
+      });
+      
+      setAllSamples(samplesArray);  // Store all samples for workflow stats
+      setRecentSamples(sortedSamples.slice(0, 10));
+      setUrgentOrders(workOrdersArray.filter(wo => wo.priority === 'urgente' || wo.priority === 'critica'));
     } catch (error) {
       console.error("Error loading dashboard data:", error);
     }
@@ -73,9 +120,13 @@ export default function Dashboard() {
       completada: 0
     };
     
-    recentSamples.forEach(sample => {
-      if (statusCounts.hasOwnProperty(sample.status)) {
+    // Use all samples for accurate workflow stats, not just recent ones
+    allSamples.forEach(sample => {
+      if (sample.status && statusCounts.hasOwnProperty(sample.status)) {
         statusCounts[sample.status]++;
+      } else if (sample.status === 'en_proceso') {
+        // Map en_proceso to en_preparacion for compatibility
+        statusCounts['en_preparacion']++;
       }
     });
     

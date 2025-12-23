@@ -64,23 +64,22 @@ export default function SamplesPage() {
         samplesData = await Sample.getAll();
       } catch (sampleError) {
         console.error('Error loading samples:', sampleError);
-        // Continue with empty samples array
       }
       
       try {
         clientsData = await Client.getAll();
       } catch (clientError) {
         console.error('Error loading clients:', clientError);
-        // Continue with empty clients array
       }
       
-      // Ensure samples is always an array
+      // Ensure arrays
       const samplesArray = Array.isArray(samplesData) ? samplesData : [];
       const clientsArray = Array.isArray(clientsData) ? clientsData : [];
       
       setSamples(samplesArray);
       setClients(clientsArray);
       setFilteredSamples(samplesArray);
+      
     } catch (error) {
       console.error("Error in loadData:", error);
     }
