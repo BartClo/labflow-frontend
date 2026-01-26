@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { X, QrCode, FlaskConical, Package } from "lucide-react";
 import { AnalysisTemplate, Analysis } from "@/api/entities";
+import { administrationService } from "@/api/services/administration";
 
 const sampleTypes = [
   { value: "agua", label: "Agua" },
@@ -67,6 +68,7 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
     client_name: sample?.client_name || "",
     sampling_point: sample?.sampling_point || "",
     sample_type: sample?.sample_type || "agua",
+    other_sample_type: sample?.other_sample_type || "",
     reception_date:
       sample?.reception_date || new Date().toISOString().slice(0, 16),
     sampling_date:
@@ -92,6 +94,7 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
 
   const [templates, setTemplates] = useState([]);
   const [analyses, setAnalyses] = useState([]);
+  const [technicians, setTechnicians] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [analysisSelectionMode, setAnalysisSelectionMode] =
     useState("individual");
@@ -100,6 +103,7 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
 
   useEffect(() => {
     loadTemplatesAndAnalyses();
+    loadTechnicians();
   }, []);
 
   useEffect(() => {
@@ -138,6 +142,38 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
       // Set empty arrays as fallback
       setTemplates([]);
       setAnalyses([]);
+    }
+  };
+
+  const loadTechnicians = async () => {
+    try {
+      const users = await administrationService.getActiveUsers();
+      console.log('👥 Usuarios activos recibidos:', users);
+      
+      // Filtrar usuarios con rol de trabajador
+      // El rol es un objeto con propiedad 'nombre'
+      const workers = users.filter(user => {
+        const roleName = user.rol?.nombre || user.role?.nombre || '';
+        const roleString = String(roleName).toLowerCase();
+        console.log(`Usuario: ${user.nombre} ${user.apellido}, Rol:`, roleString);
+        return roleString === 'trabajador';
+      });
+      
+      console.log('👷 Trabajadores filtrados:', workers);
+      
+      // Formatear para el select - usar ID como key y value, mostrar nombre completo
+      const formattedWorkers = workers.map(worker => ({
+        id: worker.id,
+        value: worker.id, // Usar ID como value
+        label: `${worker.nombre} ${worker.apellido}`,
+        fullName: `${worker.nombre} ${worker.apellido}`
+      }));
+      
+      console.log('✅ Trabajadores formateados para select:', formattedWorkers);
+      setTechnicians(formattedWorkers);
+    } catch (error) {
+      console.error('❌ Error loading technicians:', error);
+      setTechnicians([]);
     }
   };
 
@@ -365,6 +401,19 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
                     ))}
                   </SelectContent>
                 </Select>
+                {formData.sample_type === "otros" && (
+                  <div className="mt-2">
+                    <Input
+                      id="other_sample_type"
+                      value={formData.other_sample_type}
+                      onChange={(e) =>
+                        handleInputChange("other_sample_type", e.target.value)
+                      }
+                      placeholder="Especificar tipo de muestra"
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -505,15 +554,24 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
 
               <div className="space-y-2">
                 <Label htmlFor="received_by">Recibida por *</Label>
-                <Input
-                  id="received_by"
+                <Select
                   value={formData.received_by}
-                  onChange={(e) =>
-                    handleInputChange("received_by", e.target.value)
+                  onValueChange={(value) =>
+                    handleInputChange("received_by", value)
                   }
-                  placeholder="Nombre del técnico"
                   required
-                />
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar técnico" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {technicians.map((tech) => (
+                      <SelectItem key={tech.id} value={tech.value}>
+                        {tech.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -817,7 +875,7 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
                               );
                               return (
                                 <div
-                                  key={template.id}
+                                  key={template.idPlantilla}
                                   className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
                                 >
                                   <div className="flex items-center gap-3 flex-1">

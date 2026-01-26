@@ -80,7 +80,8 @@ export function ReagentsCombobox({ value, onValueChange, placeholder = "Seleccio
                 return (
                   <CommandItem
                     key={`reagent-${index}-${itemName}`}
-                    value={itemName}
+                    value={`reagent-${index}`}
+                    keywords={[itemName]}
                     onSelect={() => {
                       onValueChange(itemName);
                       setOpen(false);

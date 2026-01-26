@@ -23,7 +23,7 @@ export default function WorkflowDetails({ step, workOrder, onClose, onUpdate }) 
   const [formData, setFormData] = useState({
     notes: step.notes || '',
     method_used: step.method_used || '',
-    equipment_used: step.equipment_used?.join(', ') || '',
+    equipment_used: step.equipment_used?.join('; ') || '',
     results: {
       parameter: step.results?.parameter || '',
       value: step.results?.value || '',
@@ -36,7 +36,7 @@ export default function WorkflowDetails({ step, workOrder, onClose, onUpdate }) 
   const handleSave = async () => {
     const updateData = {
       ...formData,
-      equipment_used: formData.equipment_used.split(',').map(eq => eq.trim()).filter(eq => eq),
+      equipment_used: formData.equipment_used.split(';').map(eq => eq.trim()).filter(eq => eq),
       results: {
         ...formData.results,
         value: parseFloat(formData.results.value) || 0,
@@ -159,7 +159,7 @@ export default function WorkflowDetails({ step, workOrder, onClose, onUpdate }) 
             />
           ) : (
             <div className="p-3 bg-gray-50 rounded-lg">
-              {step.equipment_used?.join(', ') || 'No especificado'}
+              {step.equipment_used?.join('; ') || 'No especificado'}
             </div>
           )}
         </div>

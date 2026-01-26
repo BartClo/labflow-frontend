@@ -80,7 +80,8 @@ export function EquipmentCombobox({ value, onValueChange, placeholder = "Selecci
                 return (
                   <CommandItem
                     key={`equipment-${index}-${itemName}`}
-                    value={itemName}
+                    value={`equipment-${index}`}
+                    keywords={[itemName]}
                     onSelect={() => {
                       onValueChange(itemName);
                       setOpen(false);

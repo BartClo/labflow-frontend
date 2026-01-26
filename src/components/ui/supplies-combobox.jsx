@@ -80,7 +80,8 @@ export function SuppliesCombobox({ value, onValueChange, placeholder = "Seleccio
                 return (
                   <CommandItem
                     key={`supply-${index}-${itemName}`}
-                    value={itemName}
+                    value={`supply-${index}`}
+                    keywords={[itemName]}
                     onSelect={() => {
                       onValueChange(itemName);
                       setOpen(false);

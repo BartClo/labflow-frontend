@@ -164,7 +164,7 @@ export default function OTGenerationPage() {
           priority: samples.some(s => s.priority === 'critica') ? 'critica' : 
                     samples.some(s => s.priority === 'urgente') ? 'urgente' : 'normal',
           generated_at: new Date().toISOString(),
-          equipment_used: selectedAnalysis.required_equipment?.join(', ') || ''
+          equipment_used: selectedAnalysis.required_equipment?.join('; ') || ''
         };
       } else if (selectionMode === "template" && selectedTemplate) {
         const otNumber = `OT-${Date.now().toString().slice(-6)}-TPL`;

@@ -53,13 +53,9 @@ export default function SampleDetails({ sample, onEdit, onClose }) {
   const getAnalysisById = (id) => {
     const analysis = analyses.find(a => a.id === id);
     return analysis ? {
-      name: analysis.nombreAnalisis || analysis.nombre || `Análisis ${id}`,
-      code: analysis.codigo,
-      category: analysis.categoria
+      name: analysis.nombreAnalisis || analysis.nombre || `Análisis ${id}`
     } : {
-      name: `Análisis ID: ${id}`,
-      code: null,
-      category: null
+      name: `Análisis ID: ${id}`
     };
   };
   return (
@@ -278,33 +274,42 @@ export default function SampleDetails({ sample, onEdit, onClose }) {
           {/* Análisis y plantillas solicitados */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900">Análisis Solicitados</h3>
-            {sample.requested_tests && sample.requested_tests.length > 0 ? (
+            {(sample.analysis_details && sample.analysis_details.length > 0) || (sample.requested_tests && sample.requested_tests.length > 0) ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {sample.requested_tests.map((testId, index) => {
-                    const analysis = getAnalysisById(testId);
-                    return (
+                  {sample.analysis_details && sample.analysis_details.length > 0 ? (
+                    // Si tenemos analysis_details, usar esos datos directamente
+                    sample.analysis_details.map((analysis, index) => (
                       <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                         <div className="flex items-center gap-2">
                           <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                           <div className="flex-1">
-                            <span className="text-sm font-medium block">{analysis.name}</span>
-                            {analysis.code && (
-                              <span className="text-xs text-gray-600">Código: {analysis.code}</span>
-                            )}
-                            {analysis.category && (
+                            <span className="text-sm font-medium block">{analysis.name || 'Análisis sin nombre'}</span>
+                            {analysis.status && (
                               <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded mt-1 inline-block">
-                                {analysis.category}
+                                {analysis.status}
                               </span>
                             )}
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    ))
+                  ) : (
+                    // Fallback al método anterior
+                    sample.requested_tests.map((testId, index) => {
+                      const analysis = getAnalysisById(testId);
+                      return (
+                        <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
                 <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-                  <span className="font-medium">Total de análisis solicitados:</span> {sample.requested_tests.length}
+                  <span className="font-medium">Total de análisis solicitados:</span> {sample.analysis_details?.length || sample.requested_tests?.length || 0}
                   {isLoadingAnalyses && <span className="ml-2 text-gray-500">(Cargando detalles...)</span>}
                 </div>
               </div>

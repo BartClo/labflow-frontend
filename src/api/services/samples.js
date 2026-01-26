@@ -195,7 +195,15 @@ const transformBackendToFrontend = (backendSample) => {
     completion_date: backendSample.fechaFinalizacion || backendSample.fecha_finalizacion,
     received_by: backendSample.responsableMuestreo || backendSample.responsable_muestreo,
     sample_condition: backendSample.condicionMuestra || backendSample.condicion_muestra || 'aceptable',
-    requested_tests: backendSample.analisisIds || backendSample.analisis_ids || [],
+    requested_tests: Array.isArray(backendSample.analisis) ? 
+      backendSample.analisis.map(analisis => analisis.id_analisis || analisis.id) : 
+      (backendSample.analisisIds || backendSample.analisis_ids || []),
+    analysis_details: Array.isArray(backendSample.analisis) ? 
+      backendSample.analisis.map(analisis => ({
+        id: analisis.id_analisis || analisis.id,
+        name: analisis.nombre_analisis || analisis.nombre,
+        status: analisis.estado_analisis || analisis.estado
+      })) : [],
     observations: backendSample.observaciones || '',
     transport_conditions: {
       temperature: backendSample.temperatura_transporte || backendSample.temperaturaTransporte || 
@@ -237,6 +245,10 @@ const transformBackendToFrontend = (backendSample) => {
       temperatura_transporte: backendSample.temperatura_transporte,
       tipo_envase: backendSample.tipo_envase,
       descripcion_conservantes: backendSample.descripcion_conservantes
+    },
+    analisis_debug: {
+      original_analisis: backendSample.analisis || [],
+      analisis_count: Array.isArray(backendSample.analisis) ? backendSample.analisis.length : 0
     },
     requested_tests: transformedSample.requested_tests,
     observations: transformedSample.observations
