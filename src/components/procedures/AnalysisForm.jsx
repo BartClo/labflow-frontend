@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from 'react-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,25 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
     price: analysis?.price || '',
     status: analysis?.status || 'activo'
   });
+
+  useEffect(() => {
+    // Bloquear scroll del body cuando el modal está abierto
+    document.body.style.overflow = 'hidden';
+    
+    // Cerrar con tecla Escape
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [onCancel]);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
@@ -166,11 +186,11 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
     onSubmit(submitData);
   };
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="w-full max-w-4xl max-h-[95vh] flex flex-col bg-white rounded-lg shadow-xl">
+  const modal = (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[999999]" onClick={onCancel}>
+      <div className="w-full max-w-4xl max-h-[95vh] flex flex-col bg-white rounded-lg shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header fijo */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-6 border-b border-gray-200 bg-white rounded-t-lg">
           <h2 className="text-2xl font-bold text-gray-900">
             {analysis ? 'Editar Análisis' : 'Nuevo Análisis'}
           </h2>
@@ -483,4 +503,6 @@ export default function AnalysisForm({ analysis, onSubmit, onCancel }) {
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal;
 }

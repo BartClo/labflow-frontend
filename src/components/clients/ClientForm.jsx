@@ -39,10 +39,29 @@ export default function ClientForm({ client, onSubmit, onCancel }) {
     onSubmit(formData);
   };
 
+  useEffect(() => {
+    // Bloquear scroll del body cuando el modal está abierto
+    document.body.style.overflow = 'hidden';
+    
+    // Cerrar con tecla Escape
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [onCancel]);
+
   const modal = (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[99999]">
-      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <CardHeader className="flex flex-row items-center justify-between">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[999999]" onClick={onCancel}>
+      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto overflow-hidden p-0" onClick={(e) => e.stopPropagation()}>
+        <CardHeader className="flex flex-row items-center justify-between px-6 py-6 space-y-0 bg-white rounded-t-xl">
           <CardTitle>
             {client ? 'Editar Cliente' : 'Nuevo Cliente'}
           </CardTitle>

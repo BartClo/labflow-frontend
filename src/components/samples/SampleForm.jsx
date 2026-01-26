@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from 'react-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,6 +106,25 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
     loadTemplatesAndAnalyses();
     loadTechnicians();
   }, []);
+
+  useEffect(() => {
+    // Bloquear scroll del body cuando el modal está abierto
+    document.body.style.overflow = 'hidden';
+    
+    // Cerrar con tecla Escape
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [onCancel]);
 
   useEffect(() => {
     if (!sample && !formData.internal_number) {
@@ -282,10 +302,10 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
     return matchesSearch;
   });
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <CardHeader className="flex flex-row items-center justify-between">
+  const modal = (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[999999]" onClick={onCancel}>
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto overflow-hidden p-0" onClick={(e) => e.stopPropagation()}>
+        <CardHeader className="flex flex-row items-center justify-between px-6 py-6 space-y-0 bg-white rounded-t-xl">
           <CardTitle>
             {sample ? "Editar Muestra" : "Ingresar Nueva Muestra"}
           </CardTitle>
@@ -1099,4 +1119,6 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
       </Card>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal;
 }

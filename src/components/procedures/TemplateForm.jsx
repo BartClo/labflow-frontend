@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { createPortal } from 'react-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,25 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
       });
     }
   }, [template]);
+
+  useEffect(() => {
+    // Bloquear scroll del body cuando el modal está abierto
+    document.body.style.overflow = 'hidden';
+    
+    // Cerrar con tecla Escape
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        onCancel();
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    
+    return () => {
+      document.body.style.overflow = 'unset';
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [onCancel]);
 
   const handleInputChange = (field, value) => {
     setFormData(prev => {
@@ -105,10 +125,10 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
 
   const selectedAnalyses = analyses.filter(a => formData.analysis_ids.includes(a.idAnalisis));
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <Card className="w-full max-w-5xl my-8 max-h-[95vh] flex flex-col">
-        <CardHeader className="flex flex-row items-center justify-between border-b">
+  const modal = (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[999999] overflow-y-auto" onClick={onCancel}>
+      <Card className="w-full max-w-5xl my-8 max-h-[95vh] flex flex-col overflow-hidden p-0" onClick={(e) => e.stopPropagation()}>
+        <CardHeader className="flex flex-row items-center justify-between border-b px-6 py-6 space-y-0 bg-white rounded-t-xl">
           <CardTitle className="text-2xl">
             {template ? 'Editar Plantilla de Procedimientos' : 'Nueva Plantilla de Procedimientos'}
           </CardTitle>
@@ -294,4 +314,6 @@ export default function TemplateForm({ template, analyses, onSubmit, onCancel })
       </Card>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modal, document.body) : modal;
 }
