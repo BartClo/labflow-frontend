@@ -94,17 +94,21 @@ export default function SampleDetails({ sample, onEdit, onClose }) {
             </Button>
           </div>
         </CardHeader>
+
         
+                  {/* Información básica de la muestra */}
         <CardContent className="space-y-6">
-          {/* Información básica de la muestra */}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">Información Básica</h3>
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
+
+                {/* <div className="flex items-center gap-2">
                   <span className="font-medium text-gray-600">Número Interno:</span>
                   <span>{sample.internal_number}</span>
-                </div>
+                </div> */}
+
                 {sample.scanned_barcode && (
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-gray-600">Código de Barras:</span>

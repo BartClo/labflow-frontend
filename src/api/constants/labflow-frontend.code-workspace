@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../../.."
+		},
+		{
+			"path": "../../../../labflow-backend"
+		}
+	],
+	"settings": {
+		"trivy.secretScanning": true,
+		"trivy.offlineScan": true
+	}
+}

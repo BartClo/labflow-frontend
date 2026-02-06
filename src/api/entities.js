@@ -14,6 +14,7 @@ import {
   analysisService,
   analysisTemplatesService,
   quotesService,
+  tasksService,
 } from './services';
 
 // Export services with backward-compatible names
@@ -25,6 +26,7 @@ export const WorkflowStep = workflowsService;
 export const Analysis = analysisService;
 export const AnalysisTemplate = analysisTemplatesService;
 export const User = authService;
+export const Task = tasksService;
 
 // Also export the services directly
 export {
@@ -36,4 +38,5 @@ export {
   analysisService,
   analysisTemplatesService,
   quotesService,
+  tasksService,
 };

@@ -108,8 +108,8 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
   }, []);
 
   useEffect(() => {
-    // Bloquear scroll del body cuando el modal está abierto
-    document.body.style.overflow = 'hidden';
+    // No bloquear el scroll del body para permitir que los Select funcionen correctamente
+    // document.body.style.overflow = 'hidden';
     
     // Cerrar con tecla Escape
     const handleEscape = (e) => {
@@ -121,7 +121,7 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
     document.addEventListener('keydown', handleEscape);
     
     return () => {
-      document.body.style.overflow = 'unset';
+      // document.body.style.overflow = 'unset';
       document.removeEventListener('keydown', handleEscape);
     };
   }, [onCancel]);
@@ -304,7 +304,7 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
 
   const modal = (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[999999]" onClick={onCancel}>
-      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto overflow-hidden p-0" onClick={(e) => e.stopPropagation()}>
+      <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto p-0" onClick={(e) => e.stopPropagation()}>
         <CardHeader className="flex flex-row items-center justify-between px-6 py-6 space-y-0 bg-white rounded-t-xl">
           <CardTitle>
             {sample ? "Editar Muestra" : "Ingresar Nueva Muestra"}
@@ -318,7 +318,8 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Información básica */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
+              
+              {/* <div className="space-y-2">
                 <Label htmlFor="internal_number">Número Interno</Label>
                 <Input
                   id="internal_number"
@@ -329,7 +330,7 @@ export default function SampleForm({ sample, clients, onSubmit, onCancel }) {
                 <p className="text-sm text-gray-500">
                   Se genera automáticamente
                 </p>
-              </div>
+              </div> */}
 
               <div className="space-y-2">
                 <Label htmlFor="barcode_scanner">Código de Barras</Label>

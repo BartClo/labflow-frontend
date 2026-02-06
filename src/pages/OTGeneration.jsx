@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { Sample, WorkOrder, Analysis, AnalysisTemplate } from "@/api/entities";
+import { WorkOrder, Analysis, AnalysisTemplate, Task } from "@/api/entities";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,8 @@ import {
   Activity,
   Edit,
   Trash2,
-  X
+  X,
+  User
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -47,14 +49,16 @@ const priorityConfig = {
 };
 
 export default function OTGenerationPage() {
-  const [pendingSamples, setPendingSamples] = useState([]);
+  const { user } = useAuth();
+  const [pendingTasks, setPendingTasks] = useState([]); // Tareas pendientes del backend
+  const [pendingTasksByAnalysis, setPendingTasksByAnalysis] = useState({}); // Conteo por análisis
   const [workOrders, setWorkOrders] = useState([]);
   const [analyses, setAnalyses] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [filteredSamples, setFilteredSamples] = useState([]);
-  const [selectedSamples, setSelectedSamples] = useState([]);
+  const [filteredTasks, setFilteredTasks] = useState([]); // Tareas filtradas por análisis
+  const [selectedTasks, setSelectedTasks] = useState([]); // IDs de tareas seleccionadas
   const [searchTerm, setSearchTerm] = useState("");
   const [selectionMode, setSelectionMode] = useState("individual");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -66,16 +70,94 @@ export default function OTGenerationPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [samples, ordersData, analysesData, templatesData] = await Promise.all([
-        Sample.filter({ status: 'recibida' }),
-        WorkOrder.list('-created_date'),
-        Analysis.list(),
-        AnalysisTemplate.list()
-      ]);
-      setPendingSamples(samples);
-      setWorkOrders(ordersData);
-      setAnalyses(analysesData.filter(a => a.status === 'activo'));
-      setTemplates(templatesData.filter(t => t.status === 'activo'));
+      // Cargar datos de forma independiente para que un error no bloquee todo
+      let ordersData = [];
+      let analysesData = [];
+      let templatesData = [];
+      let tasksData = [];
+      let tasksByAnalysisData = {};
+
+      try {
+        ordersData = await WorkOrder.getAll();
+        console.log('📋 Órdenes de trabajo cargadas:', ordersData);
+      } catch (error) {
+        console.warn("Work orders endpoint not available yet:", error.message);
+        ordersData = [];
+      }
+
+      try {
+        analysesData = await Analysis.getAll();
+        console.log('📊 Análisis cargados:', analysesData);
+      } catch (error) {
+        console.error("Error loading analyses:", error);
+      }
+
+      try {
+        templatesData = await AnalysisTemplate.getAll();
+        console.log('📦 Plantillas cargadas:', templatesData);
+      } catch (error) {
+        console.error("Error loading templates:", error);
+      }
+
+      // Cargar tareas pendientes (sin OT asignada)
+      try {
+        tasksData = await Task.getPendingTasks();
+        console.log('📝 Tareas pendientes cargadas:', tasksData);
+      } catch (error) {
+        console.error("Error loading pending tasks:", error);
+      }
+
+      // Cargar conteo de tareas por análisis
+      try {
+        tasksByAnalysisData = await Task.getPendingTasksByAnalysis();
+        console.log('📊 Tareas por análisis:', tasksByAnalysisData);
+      } catch (error) {
+        console.error("Error loading tasks by analysis:", error);
+      }
+
+      // Ordenar las órdenes por fecha de creación (más recientes primero) en el frontend
+      const sortedOrders = Array.isArray(ordersData) ? 
+        [...ordersData].sort((a, b) => {
+          const dateA = new Date(a.created_date || a.generated_at || 0);
+          const dateB = new Date(b.created_date || b.generated_at || 0);
+          return dateB - dateA;
+        }) : [];
+      
+      // Transformar análisis y plantillas del formato backend al formato que espera el componente
+      const transformedAnalyses = Array.isArray(analysesData) ? analysesData.map(a => ({
+        id: a.idAnalisis || a.id,
+        name: a.nombreAnalisis || a.name,
+        code: a.codigo || a.code,
+        method: a.metodoEnsayo || a.method,
+        category: a.categoria || a.category,
+        required_equipment: a.equiposRequeridos || a.required_equipment || [],
+        status: a.estado || a.status
+      })) : [];
+      
+      const transformedTemplates = Array.isArray(templatesData) ? templatesData.map(t => {
+        const analisisIncluidos = t.analisisIncluidos || [];
+        const analysisIds = Array.isArray(analisisIncluidos) 
+          ? analisisIncluidos.map(a => a.idAnalisis || a.id || a)
+          : [];
+        
+        return {
+          id: t.idPlantilla || t.id,
+          name: t.nombrePlantilla || t.name,
+          description: t.descripcion || t.description,
+          analysis_ids: analysisIds,
+          status: t.estado || t.status
+        };
+      }) : [];
+      
+      console.log('✅ Análisis transformados:', transformedAnalyses.length);
+      console.log('✅ Plantillas transformadas:', transformedTemplates.length);
+      console.log('✅ Tareas pendientes:', tasksData.length);
+      
+      setPendingTasks(tasksData);
+      setPendingTasksByAnalysis(tasksByAnalysisData);
+      setWorkOrders(sortedOrders);
+      setAnalyses(transformedAnalyses);
+      setTemplates(transformedTemplates);
     } catch (error) {
       console.error("Error loading data:", error);
     }
@@ -85,35 +167,64 @@ export default function OTGenerationPage() {
     loadData();
   }, [loadData]);
 
-  // Filtrar muestras cuando se selecciona un análisis o plantilla
+  // Función para ordenar tareas por prioridad y fecha
+  const sortTasksByPriorityAndDate = (tasks) => {
+    const priorityOrder = { 'alta': 0, 'critica': 0, 'media': 1, 'urgente': 1, 'baja': 2, 'normal': 2 };
+    
+    return [...tasks].sort((a, b) => {
+      // Primero ordenar por prioridad (alta/crítica > media/urgente > baja/normal)
+      const priorityA = priorityOrder[a.priority?.toLowerCase()] ?? 2;
+      const priorityB = priorityOrder[b.priority?.toLowerCase()] ?? 2;
+      
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+      
+      // Si tienen la misma prioridad, ordenar por fecha (más antiguas primero)
+      const dateA = new Date(a.date_added || 0);
+      const dateB = new Date(b.date_added || 0);
+      return dateA - dateB;
+    });
+  };
+
+  // Filtrar tareas cuando se selecciona un análisis
   useEffect(() => {
     if (selectionMode === "individual" && selectedAnalysis) {
-      const samplesForAnalysis = pendingSamples.filter(sample => 
-        sample.requested_tests && 
-        Array.isArray(sample.requested_tests) &&
-        sample.requested_tests.includes(selectedAnalysis.name)
-      );
-      setFilteredSamples(samplesForAnalysis);
-      setSelectedSamples([]);
-    } else if (selectionMode === "template" && selectedTemplate) {
-      const templateAnalysisNames = analyses
-        .filter(a => selectedTemplate.analysis_ids?.includes(a.id))
-        .map(a => a.name);
+      console.log('🔍 Buscando tareas para análisis:', selectedAnalysis.name, 'ID:', selectedAnalysis.id);
+      console.log('🔍 Total tareas pendientes:', pendingTasks.length);
       
-      const samplesForTemplate = pendingSamples.filter(sample => 
-        sample.requested_tests && 
-        Array.isArray(sample.requested_tests) &&
-        templateAnalysisNames.every(analysisName => 
-          sample.requested_tests.includes(analysisName)
-        )
+      // Filtrar tareas que corresponden al análisis seleccionado
+      const tasksForAnalysis = pendingTasks.filter(task => 
+        task.analysis_name === selectedAnalysis.name ||
+        task.analysis_code === selectedAnalysis.code ||
+        task.analysis_name?.toLowerCase() === selectedAnalysis.name?.toLowerCase()
       );
-      setFilteredSamples(samplesForTemplate);
-      setSelectedSamples([]);
+      
+      // Ordenar por prioridad y fecha
+      const sortedTasks = sortTasksByPriorityAndDate(tasksForAnalysis);
+      
+      console.log('✅ Tareas encontradas para análisis:', sortedTasks.length);
+      console.log('📊 Tareas ordenadas:', sortedTasks.map(t => ({
+        id: t.id, 
+        sample: t.sample_number,
+        priority: t.priority, 
+        date: t.date_added
+      })));
+      
+      setFilteredTasks(sortedTasks);
+      setSelectedTasks([]);
+    } else if (selectionMode === "template" && selectedTemplate) {
+      console.log('🔍 Plantilla seleccionada:', selectedTemplate);
+      // Para plantillas, por ahora mostrar todas las tareas pendientes
+      // TODO: Filtrar por los análisis de la plantilla
+      const sortedTasks = sortTasksByPriorityAndDate(pendingTasks);
+      setFilteredTasks(sortedTasks);
+      setSelectedTasks([]);
     } else {
-      setFilteredSamples([]);
-      setSelectedSamples([]);
+      setFilteredTasks([]);
+      setSelectedTasks([]);
     }
-  }, [selectedAnalysis, selectedTemplate, pendingSamples, selectionMode, analyses]);
+  }, [selectedAnalysis, selectedTemplate, pendingTasks, selectionMode]);
 
   const handleAnalysisSelect = (analysis) => {
     setSelectedAnalysis(analysis);
@@ -125,80 +236,62 @@ export default function OTGenerationPage() {
     setSelectedAnalysis(null);
   };
 
-  const handleSampleToggle = (sampleId) => {
-    setSelectedSamples(prev => 
-      prev.includes(sampleId)
-        ? prev.filter(id => id !== sampleId)
-        : [...prev, sampleId]
+  const handleTaskToggle = (taskId) => {
+    setSelectedTasks(prev => 
+      prev.includes(taskId)
+        ? prev.filter(id => id !== taskId)
+        : [...prev, taskId]
     );
   };
 
-  const handleSelectAll = () => {
-    if (selectedSamples.length === filteredSamples.length) {
-      setSelectedSamples([]);
+  const handleSelectAllTasks = () => {
+    if (selectedTasks.length === filteredTasks.length) {
+      setSelectedTasks([]);
     } else {
-      setSelectedSamples(filteredSamples.map(s => s.id));
+      setSelectedTasks(filteredTasks.map(t => t.id));
     }
   };
 
   const generateWorkOrder = async () => {
-    if (selectedSamples.length === 0) return;
+    if (selectedTasks.length === 0) {
+      alert('Por favor selecciona al menos una tarea');
+      return;
+    }
+    
+    // Verificar que hay un usuario autenticado para asignar como técnico
+    if (!user?.id) {
+      alert('No se pudo identificar el usuario. Por favor, inicia sesión nuevamente.');
+      return;
+    }
     
     setIsGenerating(true);
     try {
-      const samples = filteredSamples.filter(s => selectedSamples.includes(s.id));
+      console.log('🚀 Generando OT con tareas:', selectedTasks);
+      console.log('👤 Usuario asignado:', user);
       
-      let otData;
-      if (selectionMode === "individual" && selectedAnalysis) {
-        const otNumber = `OT-${Date.now().toString().slice(-6)}-${selectedAnalysis.code || 'AN'}`;
-        
-        otData = {
-          ot_number: otNumber,
-          analysis_type: selectedAnalysis.name,
-          sample_ids: samples.map(s => s.id),
-          sample_numbers: samples.map(s => s.internal_number).join(', '),
-          sample_count: samples.length,
-          test_parameter: selectedAnalysis.name,
-          test_method: selectedAnalysis.method,
-          status: "generada",
-          priority: samples.some(s => s.priority === 'critica') ? 'critica' : 
-                    samples.some(s => s.priority === 'urgente') ? 'urgente' : 'normal',
-          generated_at: new Date().toISOString(),
-          equipment_used: selectedAnalysis.required_equipment?.join('; ') || ''
-        };
-      } else if (selectionMode === "template" && selectedTemplate) {
-        const otNumber = `OT-${Date.now().toString().slice(-6)}-TPL`;
-        
-        otData = {
-          ot_number: otNumber,
-          analysis_type: selectedTemplate.name,
-          sample_ids: samples.map(s => s.id),
-          sample_numbers: samples.map(s => s.internal_number).join(', '),
-          sample_count: samples.length,
-          test_parameter: selectedTemplate.name,
-          test_method: `Plantilla: ${selectedTemplate.name}`,
-          status: "generada",
-          priority: samples.some(s => s.priority === 'critica') ? 'critica' : 
-                    samples.some(s => s.priority === 'urgente') ? 'urgente' : 'normal',
-          generated_at: new Date().toISOString()
-        };
-      }
+      // Crear la orden de trabajo usando el endpoint del backend
+      const otData = {
+        tarea_ids: selectedTasks,
+        tecnico_asignado_id: user.id
+      };
       
-      await WorkOrder.create(otData);
+      console.log('📤 Enviando datos al backend:', otData);
       
-      const updatePromises = samples.map(sample => 
-        Sample.update(sample.id, { status: 'en_preparacion' })
-      );
-      await Promise.all(updatePromises);
+      const createdOrder = await WorkOrder.create(otData);
+      
+      console.log('✅ Orden de trabajo creada:', createdOrder);
       
       setLastGeneration(new Date());
-      setSelectedSamples([]);
+      setSelectedTasks([]);
       setSelectedAnalysis(null);
       setSelectedTemplate(null);
       setActiveTab("list");
       loadData();
     } catch (error) {
       console.error("Error generating work order:", error);
+      console.error("Server response:", error.response?.data);
+      const errorMsg = error.serverMessage || error.response?.data?.message || error.message || 'Error desconocido';
+      alert(`Error al generar la OT: ${errorMsg}`);
     }
     setIsGenerating(false);
   };
@@ -367,8 +460,8 @@ export default function OTGenerationPage() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Muestras Pendientes</p>
-                    <p className="text-3xl font-bold text-gray-900">{pendingSamples.length}</p>
+                    <p className="text-sm text-gray-600">Tareas Pendientes</p>
+                    <p className="text-3xl font-bold text-gray-900">{pendingTasks.length}</p>
                   </div>
                   <FlaskConical className="w-10 h-10 text-blue-600" />
                 </div>
@@ -438,9 +531,17 @@ export default function OTGenerationPage() {
                       </div>
                     ) : (
                       filteredAnalyses.map((analysis) => {
-                        const samplesCount = pendingSamples.filter(s => 
-                          s.requested_tests?.includes(analysis.name)
+                        // Contar tareas pendientes para este análisis
+                        const tasksCount = pendingTasks.filter(t => 
+                          t.analysis_name === analysis.name ||
+                          t.analysis_code === analysis.code ||
+                          t.analysis_name?.toLowerCase() === analysis.name?.toLowerCase()
                         ).length;
+                        
+                        // También usar el conteo del backend si está disponible
+                        const backendCount = pendingTasksByAnalysis[analysis.name] || 0;
+                        const displayCount = tasksCount || backendCount;
+                        
                         const isSelected = selectedAnalysis?.id === analysis.id;
                         
                         return (
@@ -460,8 +561,8 @@ export default function OTGenerationPage() {
                                   </div>
                                   <p className="text-sm text-gray-600 mb-2">{analysis.method}</p>
                                   <div className="flex items-center gap-2">
-                                    <Badge className={samplesCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                      {samplesCount} muestras
+                                    <Badge className={displayCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                      {displayCount} tarea{displayCount !== 1 ? 's' : ''} pendiente{displayCount !== 1 ? 's' : ''}
                                     </Badge>
                                   </div>
                                 </div>
@@ -484,13 +585,14 @@ export default function OTGenerationPage() {
                       </div>
                     ) : (
                       filteredTemplatesList.map((template) => {
-                        const templateAnalysisNames = analyses
-                          .filter(a => template.analysis_ids?.includes(a.id))
-                          .map(a => a.name);
+                        // Obtener los análisis de la plantilla
+                        const templateAnalyses = analyses.filter(a => template.analysis_ids?.includes(a.id));
                         
-                        const samplesCount = pendingSamples.filter(sample => 
-                          sample.requested_tests && 
-                          templateAnalysisNames.every(name => sample.requested_tests.includes(name))
+                        // Contar tareas pendientes que coinciden con los análisis de la plantilla
+                        const tasksCount = pendingTasks.filter(task => 
+                          templateAnalyses.some(analysis => 
+                            task.nombre_analisis === analysis.name || task.id_analisis === analysis.id
+                          )
                         ).length;
                         
                         const isSelected = selectedTemplate?.id === template.id;
@@ -514,8 +616,8 @@ export default function OTGenerationPage() {
                                     <Badge variant="outline" className="text-xs">
                                       {template.analysis_ids?.length || 0} análisis
                                     </Badge>
-                                    <Badge className={samplesCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                      {samplesCount} muestras
+                                    <Badge className={tasksCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                      {tasksCount} {tasksCount === 1 ? 'tarea' : 'tareas'}
                                     </Badge>
                                   </div>
                                 </div>
@@ -535,10 +637,10 @@ export default function OTGenerationPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>2. Selecciona Muestras</CardTitle>
-                {filteredSamples.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={handleSelectAll}>
-                    {selectedSamples.length === filteredSamples.length ? 'Deseleccionar' : 'Seleccionar'} Todas
+                <CardTitle>2. Selecciona Tareas para la OT</CardTitle>
+                {filteredTasks.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={handleSelectAllTasks}>
+                    {selectedTasks.length === filteredTasks.length ? 'Deseleccionar' : 'Seleccionar'} Todas
                   </Button>
                 )}
               </CardHeader>
@@ -550,52 +652,76 @@ export default function OTGenerationPage() {
                       Selecciona un análisis o plantilla
                     </h3>
                     <p className="text-gray-600">
-                      Primero debes seleccionar un análisis o plantilla para ver las muestras compatibles
+                      Primero debes seleccionar un análisis o plantilla para ver las tareas pendientes
                     </p>
                   </div>
-                ) : filteredSamples.length === 0 ? (
+                ) : filteredTasks.length === 0 ? (
                   <div className="text-center py-12">
                     <AlertCircle className="w-16 h-16 mx-auto mb-4 text-gray-400" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      No hay muestras pendientes
+                      No hay tareas pendientes
                     </h3>
                     <p className="text-gray-600">
-                      No hay muestras que requieran {selectionMode === 'individual' ? 'este análisis' : 'esta plantilla'}
+                      No hay tareas pendientes para {selectionMode === 'individual' ? 'este análisis' : 'esta plantilla'}
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                    {filteredSamples.map((sample) => (
+                    {/* Indicador de ordenamiento */}
+                    <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50 rounded flex items-center gap-2">
+                      <Clock className="w-3 h-3" />
+                      <span>Ordenado por: Prioridad (alta → media → baja) y Fecha (más antigua primero)</span>
+                    </div>
+                    
+                    {filteredTasks.map((task, index) => (
                       <Card
-                        key={sample.id}
+                        key={task.id}
                         className={`cursor-pointer transition-all hover:shadow-md ${
-                          selectedSamples.includes(sample.id) ? 'border-2 border-blue-500 bg-blue-50' : 'border'
-                        }`}
-                        onClick={() => handleSampleToggle(sample.id)}
+                          selectedTasks.includes(task.id) ? 'border-2 border-blue-500 bg-blue-50' : 'border'
+                        } ${task.priority === 'alta' ? 'border-l-4 border-l-red-500' : 
+                            task.priority === 'media' ? 'border-l-4 border-l-orange-500' : ''}`}
+                        onClick={() => handleTaskToggle(task.id)}
                       >
                         <CardContent className="p-4">
                           <div className="flex items-center gap-3">
                             <Checkbox
-                              checked={selectedSamples.includes(sample.id)}
-                              onCheckedChange={() => handleSampleToggle(sample.id)}
+                              checked={selectedTasks.includes(task.id)}
+                              onCheckedChange={() => handleTaskToggle(task.id)}
                             />
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="font-semibold text-gray-900">{sample.internal_number}</span>
-                                {sample.priority !== 'normal' && (
-                                  <Badge className={
-                                    sample.priority === 'critica' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
-                                  }>
-                                    {sample.priority}
+                                <span className="text-xs text-gray-400">#{index + 1}</span>
+                                <span className="font-semibold text-gray-900">{task.sample_number}</span>
+                                {task.priority === 'alta' && (
+                                  <Badge className="bg-red-100 text-red-800 border border-red-300">
+                                    🔴 Alta
+                                  </Badge>
+                                )}
+                                {task.priority === 'media' && (
+                                  <Badge className="bg-orange-100 text-orange-800 border border-orange-300">
+                                    🟠 Media
+                                  </Badge>
+                                )}
+                                {task.priority === 'baja' && (
+                                  <Badge className="bg-gray-100 text-gray-600">
+                                    Baja
                                   </Badge>
                                 )}
                               </div>
                               <div className="text-sm text-gray-600 space-y-1">
-                                <p>Cliente: {sample.client_name}</p>
-                                <p>Tipo: {sample.sample_type}</p>
-                                <p className="text-xs">
-                                  {format(new Date(sample.reception_date), 'dd/MM/yyyy HH:mm', { locale: es })}
-                                </p>
+                                <p><span className="text-gray-500">Análisis:</span> {task.analysis_name}</p>
+                                {task.client && (
+                                  <p><span className="text-gray-500">Cliente:</span> {task.client.name}</p>
+                                )}
+                                {task.barcode && (
+                                  <p><span className="text-gray-500">Código:</span> <span className="font-mono text-xs">{task.barcode}</span></p>
+                                )}
+                                {task.date_added && (
+                                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                                    <Calendar className="w-3 h-3" />
+                                    <span>Agregado: {format(new Date(task.date_added), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -608,7 +734,7 @@ export default function OTGenerationPage() {
             </Card>
           </div>
 
-          {selectedSamples.length > 0 && (
+          {selectedTasks.length > 0 && (
             <Card className="bg-gradient-to-r from-blue-50 to-green-50 border-blue-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -617,8 +743,12 @@ export default function OTGenerationPage() {
                       OT Lista para Generar
                     </h3>
                     <p className="text-sm text-gray-600">
-                      {selectedSamples.length} muestra{selectedSamples.length !== 1 ? 's' : ''} seleccionada{selectedSamples.length !== 1 ? 's' : ''} para{' '}
+                      {selectedTasks.length} tarea{selectedTasks.length !== 1 ? 's' : ''} seleccionada{selectedTasks.length !== 1 ? 's' : ''} para{' '}
                       {selectionMode === 'individual' ? selectedAnalysis?.name : selectedTemplate?.name}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      Técnico asignado: {user?.nombre || user?.email || 'Usuario actual'}
                     </p>
                   </div>
                   <Button 

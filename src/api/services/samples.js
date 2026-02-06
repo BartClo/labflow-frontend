@@ -53,41 +53,72 @@ const transformSampleData = (formData) => {
     }
   };
 
-  // Complete payload with all form data
+  // Complete payload with all form data - USING CAMELCASE for Java backend
   const completePayload = {
-    numero_interno: String(formData.internal_number || ''),
-    codigo_barras: String(formData.scanned_barcode || formData.internal_number || ''),
-    id_cliente: String(formData.client_id || ''),
-    punto_muestreo: String(formData.sampling_point || ''),
-    tipo_muestra: String(formData.sample_type || 'agua'),
-    prioridad: String(PRIORITY_MAPPING[formData.priority] || 'BAJA'),
-    fecha_recepcion: String(formatDateSafely(formData.reception_date)),
-    fecha_muestreo: formData.sampling_date ? String(formatDateSafely(formData.sampling_date)) : null,
-    responsable_muestreo: String(formData.received_by || 'Técnico'),
-    estado: String(STATUS_MAPPING[formData.status] || 'RECIBIDA'),
-    analisis_ids: Array.isArray(formData.requested_tests) ? formData.requested_tests : [],
-    observaciones: formData.observations || '',
-    volumen_muestra: formData.sample_volume ? String(formData.sample_volume) : null,
-    nombre_proyecto: formData.project_name || '',
-    numero_solicitud: formData.request_number || '',
-    condicion_muestra: formData.sample_condition || 'aceptable',
+    numeroInterno: String(formData.internal_number || ''),
+    codigoBarras: String(formData.scanned_barcode || formData.internal_number || ''),
+    idCliente: String(formData.client_id || ''), // String vacío si no hay cliente
+    puntoMuestreo: String(formData.sampling_point || ''),
+    tipoMuestra: String(formData.sample_type || 'agua'),
+    prioridad: String(PRIORITY_MAPPING[formData.priority] || 'baja'),
+    fechaRecepcion: String(formatDateSafely(formData.reception_date)),
+    fechaMuestreo: formData.sampling_date ? String(formatDateSafely(formData.sampling_date)) : String(formatDateSafely(formData.reception_date)),
+    responsableMuestreo: String(formData.received_by || 'Técnico'),
+    estado: String(STATUS_MAPPING[formData.status] || 'recibida'),
+    analisisIds: Array.isArray(formData.requested_tests) ? formData.requested_tests : [],
+    observaciones: formData.observations || null,
+    volumenMuestra: formData.sample_volume ? parseFloat(formData.sample_volume) : 0,
+    nombreProyecto: String(formData.project_name || ''),
+    numeroSolicitud: String(formData.request_number || ''),
+    condicionMuestra: String(formData.sample_condition || 'aceptable'),
     // Transport conditions
-    temperatura_transporte: temperatureCelsius,
-    unidad_temperatura: formData.transport_conditions?.temperature_unit || 'celsius',
-    tipo_envase: formData.transport_conditions?.container_type || '',
-    descripcion_conservantes: formData.transport_conditions?.preservation || ''
+    temperaturaTransporte: temperatureCelsius || 0,
+    unidadTemperatura: String(formData.transport_conditions?.temperature_unit || 'celsius'),
+    tipoEnvase: String(formData.transport_conditions?.container_type || ''),
+    descripcionConservantes: String(formData.transport_conditions?.preservation || '')
   };
 
-  // Remove any undefined or null values to prevent JSON parsing errors
+  // Log each field to debug null values
+  console.log('🔍 Debugging payload fields:');
   Object.keys(completePayload).forEach(key => {
-    if (completePayload[key] === undefined || completePayload[key] === null || completePayload[key] === 'undefined') {
+    const value = completePayload[key];
+    const type = typeof value;
+    console.log(`  ${key}: ${type} = ${value}`);
+    if (value === null) console.log(`    🚨 ${key} is null - THIS COULD CAUSE CONSTRAINT ERROR`);
+    if (value === '') console.log(`    ⚠️ ${key} is empty string`);
+    if (value === undefined) console.log(`    🚨 ${key} is undefined - THIS COULD CAUSE CONSTRAINT ERROR`);
+  });
+
+  // Extra check for any remaining nulls or undefined values
+  const nullFields = Object.keys(completePayload).filter(key => 
+    completePayload[key] === null || completePayload[key] === undefined
+  );
+  
+  if (nullFields.length > 0) {
+    console.log('🚨 CRITICAL: Fields that are null/undefined:', nullFields);
+    
+    // Replace all nulls/undefined with appropriate defaults (except observaciones)
+    nullFields.forEach(field => {
+      if (field !== 'observaciones') {
+        if (field === 'analisisIds') {
+          completePayload[field] = [];
+        } else if (typeof completePayload[field] === 'number' || field.includes('temperatura') || field.includes('volumen')) {
+          completePayload[field] = 0;
+        } else {
+          completePayload[field] = '';
+        }
+        console.log(`🔧 Fixed ${field}: set to ${completePayload[field]}`);
+      }
+    });
+  }
+
+  // Remove any undefined values but keep explicit nulls
+  Object.keys(completePayload).forEach(key => {
+    if (completePayload[key] === undefined || completePayload[key] === 'undefined') {
       if (key === 'analisis_ids') {
         completePayload[key] = [];
-      } else if (key === 'fecha_muestreo' || key === 'volumen_muestra' || key === 'temperatura_transporte') {
-        // Keep null for optional fields
-        completePayload[key] = null;
       } else {
-        completePayload[key] = '';
+        completePayload[key] = null;
       }
     }
   });
@@ -335,12 +366,122 @@ export const samplesService = {
 
     const transformedData = transformSampleData(sampleData);
     console.log('🔄 Transformed data for backend:', JSON.stringify(transformedData, null, 2));
+    
+    // Final validation before sending - check for any remaining nulls/undefined
+    const finalNullCheck = Object.keys(transformedData).filter(key => 
+      transformedData[key] === null || transformedData[key] === undefined
+    );
+    
+    if (finalNullCheck.length > 0) {
+      console.log('🚨 FINAL CHECK: Still found null/undefined fields:', finalNullCheck);
+      finalNullCheck.forEach(field => {
+        if (field !== 'observaciones') {
+          console.log(`🚨 CRITICAL ERROR: ${field} is still null/undefined. This will cause constraint error.`);
+        }
+      });
+    } else {
+      console.log('✅ FINAL CHECK: No null/undefined fields found');
+    }
+    
     console.log('🔍 Individual fields check:');
-    console.log('  - numero_interno:', typeof transformedData.numero_interno, transformedData.numero_interno);
-    console.log('  - fecha_recepcion:', typeof transformedData.fecha_recepcion, transformedData.fecha_recepcion);
-    console.log('  - prioridad:', typeof transformedData.prioridad, transformedData.prioridad);
-    console.log('  - analisis_ids:', typeof transformedData.analisis_ids, transformedData.analisis_ids);
+    console.log('  - numeroInterno:', typeof transformedData.numeroInterno, transformedData.numeroInterno);
+    console.log('  - idCliente:', typeof transformedData.idCliente, transformedData.idCliente);
     console.log('  - estado:', typeof transformedData.estado, transformedData.estado);
+    console.log('  - fechaRecepcion:', typeof transformedData.fechaRecepcion, transformedData.fechaRecepcion);
+    console.log('  - prioridad:', typeof transformedData.prioridad, transformedData.prioridad);
+    console.log('  - analisisIds:', typeof transformedData.analisisIds, transformedData.analisisIds);
+    console.log('  - puntoMuestreo:', typeof transformedData.puntoMuestreo, transformedData.puntoMuestreo);
+    
+    // Try sending a minimal payload first to isolate the issue
+    const minimalPayload = {
+      numeroInterno: String(transformedData.numeroInterno),
+      codigoBarras: String(transformedData.codigoBarras),
+      idCliente: transformedData.idCliente ? String(transformedData.idCliente) : null,
+      puntoMuestreo: String(transformedData.puntoMuestreo || 'laboratorio'),
+      tipoMuestra: String(transformedData.tipoMuestra || 'agua'),
+      estado: String(transformedData.estado || 'recibida'),
+      prioridad: String(transformedData.prioridad || 'baja'),
+      fechaRecepcion: String(transformedData.fechaRecepcion),
+      fechaMuestreo: String(transformedData.fechaMuestreo),
+      responsableMuestreo: String(transformedData.responsableMuestreo),
+      analisisIds: Array.isArray(transformedData.analisisIds) ? transformedData.analisisIds : []
+    };
+    
+    console.log('🧪 Trying minimal payload first:', JSON.stringify(minimalPayload, null, 2));
+    
+    // Let's first try to get existing samples to see the expected structure
+    try {
+      console.log('🔍 First, let\'s check existing samples structure...');
+      const existingSamples = await apiClient.get('/muestras');
+      console.log('📋 Existing samples structure:', existingSamples.data);
+      if (existingSamples.data && existingSamples.data.length > 0) {
+        console.log('📝 Sample structure example:', JSON.stringify(existingSamples.data[0], null, 2));
+      }
+    } catch (existingError) {
+      console.log('⚠️ Could not fetch existing samples:', existingError.message);
+    }
+    
+    // Try with an even more minimal payload - just the absolute essentials
+    const ultraMinimalPayload = {
+      numeroInterno: String(transformedData.numeroInterno),
+      codigoBarras: String(transformedData.codigoBarras),
+      tipoMuestra: "agua",
+      estado: "recibida",
+      fechaRecepcion: String(transformedData.fechaRecepcion),
+      puntoMuestreo: "laboratorio",
+      idCliente: String(transformedData.idCliente || '')
+    };
+    
+    console.log('🔬 Trying ultra-minimal payload (only 5 fields):', JSON.stringify(ultraMinimalPayload, null, 2));
+    
+    try {
+      const response = await apiClient.post('/muestras', ultraMinimalPayload);
+      console.log('✅ Ultra-minimal payload worked!', response.data);
+      return transformBackendToFrontend(response.data);
+    } catch (ultraMinimalError) {
+      console.log('❌ Even ultra-minimal payload failed');
+      console.error('Ultra-minimal error:', ultraMinimalError.response?.data);
+      
+      // Show detailed validation errors
+      if (ultraMinimalError.response?.data?.errors) {
+        console.log('🔍 Detailed validation errors:');
+        Object.keys(ultraMinimalError.response.data.errors).forEach(field => {
+          console.log(`  ❌ ${field}: ${ultraMinimalError.response.data.errors[field]}`);
+        });
+        
+        // Try to add the missing required fields
+        console.log('🔧 Attempting to fix by adding missing required fields...');
+        
+        const fixedPayload = {
+          ...ultraMinimalPayload,
+          // Add potentially missing required fields based on common patterns
+          puntoMuestreo: "laboratorio",
+          prioridad: "baja",
+          responsableMuestreo: "admin", // Try with a simple string first
+          analisisIds: []
+        };
+        
+        console.log('🛠️ Fixed payload:', JSON.stringify(fixedPayload, null, 2));
+        
+        try {
+          const fixedResponse = await apiClient.post('/muestras', fixedPayload);
+          console.log('✅ Fixed payload worked!', fixedResponse.data);
+          return transformBackendToFrontend(fixedResponse.data);
+        } catch (fixedError) {
+          console.log('❌ Fixed payload also failed');
+          console.error('Fixed payload error:', fixedError.response?.data);
+        }
+      }
+    }
+    
+    try {
+      const response = await apiClient.post('/muestras', minimalPayload);
+      console.log('✅ Sample created successfully:', response.data);
+      return transformBackendToFrontend(response.data);
+    } catch (minimalError) {
+      console.log('❌ Minimal payload also failed, trying full payload');
+      console.error('Minimal error:', minimalError.response?.data);
+    }
     
     try {
       const response = await apiClient.post('/muestras', transformedData);
@@ -350,6 +491,15 @@ export const samplesService = {
       console.error('❌ Backend error creating sample:', error.response?.data || error.message);
       console.error('❌ Error status:', error.response?.status);
       console.error('❌ Sent data:', transformedData);
+      
+      // Show ALL validation errors from the final attempt
+      if (error.response?.data?.errors) {
+        console.log('🚨 ALL VALIDATION ERRORS FROM FULL PAYLOAD:');
+        Object.keys(error.response.data.errors).forEach(field => {
+          console.log(`  ❌ ${field}: ${error.response.data.errors[field]}`);
+        });
+      }
+      
       throw error;
     }
   },
@@ -413,6 +563,48 @@ export const samplesService = {
   updateStatus: async (id, status) => {
     const response = await apiClient.patch(`/muestras/${id}/status`, { status });
     return response.data;
+  },
+
+  /**
+   * Filter samples by criteria
+   */
+  filter: async (criteria = {}) => {
+    try {
+      const params = {};
+      
+      // Map frontend criteria to backend parameters
+      if (criteria.status) {
+        // Map frontend status to backend status
+        params.estado = STATUS_MAPPING[criteria.status] || criteria.status.toUpperCase();
+      }
+      if (criteria.id) {
+        params.id = criteria.id;
+      }
+      if (criteria.internal_number) {
+        params.numero_interno = criteria.internal_number;
+      }
+      if (criteria.client_id) {
+        params.id_cliente = criteria.client_id;
+      }
+      
+      console.log('🔍 Filtering samples with params:', params);
+      
+      const response = await apiClient.get('/muestras', { params });
+      
+      // Handle paginated response
+      let samples = [];
+      if (response.data && response.data.content && Array.isArray(response.data.content)) {
+        samples = response.data.content;
+      } else if (Array.isArray(response.data)) {
+        samples = response.data;
+      }
+      
+      console.log('✅ Filtered samples:', samples.length);
+      return samples.map(transformBackendToFrontend);
+    } catch (error) {
+      console.error('Error filtering samples:', error);
+      throw error;
+    }
   },
 };
 

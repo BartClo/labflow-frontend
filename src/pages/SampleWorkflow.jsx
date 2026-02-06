@@ -32,238 +32,164 @@ export default function SampleWorkflowPage() {
   const [workOrder, setWorkOrder] = useState(null);
   const [sample, setSample] = useState(null);
   const [workflowSteps, setWorkflowSteps] = useState([]);
+  const [activityHistory, setActivityHistory] = useState([]);
   const [selectedStep, setSelectedStep] = useState(null);
   const [showInsights, setShowInsights] = useState(false);
   const [showOTInfo, setShowOTInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const createDefaultWorkflowSteps = async (workOrderId, sampleId) => {
-    // Determinar tipo de flujo basado en el número interno de la muestra
-    // Para visualización: 
-    // - Muestras MU-240001, MU-240002 = Flujo CORTO (3 pasos)
-    // - Muestras MU-240003, MU-240004 = Flujo MEDIO (5 pasos)
-    // - Muestras MU-240005, MU-240006 = Flujo LARGO (8 pasos)
+  // Genera pasos de workflow por defecto basados en las tareas de la OT
+  const generateDefaultWorkflowSteps = (order) => {
+    const tareas = order.tareas || [];
+    const now = new Date();
     
-    const sampleRecord = await Sample.filter({ id: sampleId });
-    const sampleNumber = sampleRecord[0]?.internal_number || '';
-    
-    let steps = [];
-    
-    // FLUJO CORTO - 3 pasos (Análisis simples/rápidos)
-    if (sampleNumber.includes('240001') || sampleNumber.includes('240002')) {
-      console.log(`🔵 Creando FLUJO CORTO (3 pasos) para muestra: ${sampleNumber}`);
-      steps = [
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "recepcion",
-          step_name: "Registro de Recepción",
-          status: "completado",
-          assigned_to: "Juan Pérez",
-          started_at: new Date(Date.now() - 3600000).toISOString(),
-          completed_at: new Date(Date.now() - 3000000).toISOString()
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "ejecucion_analisis",
-          step_name: "Análisis Rápido",
-          status: "en_progreso",
-          assigned_to: "Ana Martínez",
-          started_at: new Date(Date.now() - 1800000).toISOString(),
-          method_used: "Método Express / NCh 409/1",
-          equipment_used: ["Espectrofotómetro"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "aprobacion_final",
-          step_name: "Validación de Resultados",
-          status: "pendiente",
-          method_used: "Revisión técnica"
-        }
-      ];
-    }
-    
-    // FLUJO MEDIO - 5 pasos (Análisis estándar - DEFAULT)
-    else if (sampleNumber.includes('240003') || sampleNumber.includes('240004') || !sampleNumber) {
-      console.log(`🟢 Creando FLUJO MEDIO (5 pasos) para muestra: ${sampleNumber}`);
-      steps = [
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "recepcion",
-          step_name: "Registro de Recepción",
-          status: "completado",
-          assigned_to: "Juan Pérez",
-          started_at: new Date(Date.now() - 7200000).toISOString(),
-          completed_at: new Date(Date.now() - 6600000).toISOString()
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "preparacion_muestra",
-          step_name: "Preparación de Muestra",
-          status: "completado",
-          assigned_to: "Ana Martínez",
-          started_at: new Date(Date.now() - 6000000).toISOString(),
-          completed_at: new Date(Date.now() - 5400000).toISOString(),
-          method_used: "Digestión ácida",
-          equipment_used: ["Bloque digestor", "Campana extractora"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "preparacion_analisis",
-          step_name: "Preparación de Análisis",
-          status: "en_progreso",
-          assigned_to: "Carlos Silva",
-          started_at: new Date(Date.now() - 3600000).toISOString(),
-          method_used: "ICP-OES / NCh 409/1",
-          equipment_used: ["Espectrómetro ICP"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "ejecucion_analisis",
-          step_name: "Ejecución de Análisis",
-          status: "pendiente",
-          method_used: "Filtreadora / MMP-100mL"
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "control_calidad",
-          step_name: "Control de Calidad",
-          status: "pendiente",
-          requires_approval: true
-        }
-      ];
-    }
-    
-    // FLUJO LARGO - 8 pasos (Análisis complejos/múltiples etapas)
-    else if (sampleNumber.includes('240005') || sampleNumber.includes('240006')) {
-      console.log(`🟠 Creando FLUJO LARGO (8 pasos) para muestra: ${sampleNumber}`);
-      steps = [
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "recepcion",
-          step_name: "Registro de Recepción",
-          status: "completado",
-          assigned_to: "Juan Pérez",
-          started_at: new Date(Date.now() - 14400000).toISOString(),
-          completed_at: new Date(Date.now() - 13800000).toISOString()
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "preparacion_muestra",
-          step_name: "Preparación Inicial",
-          status: "completado",
-          assigned_to: "Ana Martínez",
-          started_at: new Date(Date.now() - 12600000).toISOString(),
-          completed_at: new Date(Date.now() - 12000000).toISOString(),
-          method_used: "Secado y tamizado",
-          equipment_used: ["Estufa", "Tamiz"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "preparacion_muestra",
-          step_name: "Digestión de Muestra",
-          status: "completado",
-          assigned_to: "Ana Martínez",
-          started_at: new Date(Date.now() - 10800000).toISOString(),
-          completed_at: new Date(Date.now() - 9000000).toISOString(),
-          method_used: "Digestión ácida EPA 3050B",
-          equipment_used: ["Bloque digestor", "Campana extractora"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "preparacion_analisis",
-          step_name: "Preparación de Análisis",
-          status: "en_progreso",
-          assigned_to: "Carlos Silva",
-          started_at: new Date(Date.now() - 7200000).toISOString(),
-          method_used: "Dilución y calibración",
-          equipment_used: ["Balanza analítica", "Matraces aforados"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "ejecucion_analisis",
-          step_name: "Análisis ICP-OES",
-          status: "pendiente",
-          method_used: "ICP-OES / NCh 409/1",
-          equipment_used: ["Espectrómetro ICP-OES"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "ejecucion_analisis",
-          step_name: "Análisis Complementario",
-          status: "pendiente",
-          method_used: "Cromatografía",
-          equipment_used: ["Cromatógrafo HPLC"]
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "control_calidad",
-          step_name: "Control de Calidad",
-          status: "pendiente",
-          requires_approval: true,
-          method_used: "Verificación de estándares"
-        },
-        {
-          sample_id: sampleId,
-          work_order_id: workOrderId,
-          step_type: "aprobacion_final",
-          step_name: "Aprobación Final",
-          status: "pendiente",
-          requires_approval: true,
-          method_used: "Revisión supervisor"
-        }
-      ];
-    }
+    // Pasos estándar para cualquier OT
+    const defaultSteps = [
+      {
+        id: `step-${order.id}-1`,
+        step_type: "recepcion",
+        step_name: "Registro de Recepción",
+        status: "completado",
+        assigned_to: order.tecnico_asignado?.nombre_completo || "Técnico asignado",
+        started_at: order.created_date,
+        completed_at: order.created_date,
+        order: 1
+      },
+      {
+        id: `step-${order.id}-2`,
+        step_type: "preparacion_muestra",
+        step_name: "Preparación de Muestra",
+        status: "pendiente",
+        assigned_to: order.tecnico_asignado?.nombre_completo || "Técnico asignado",
+        order: 2
+      }
+    ];
 
-    try {
-      await WorkflowStep.bulkCreate(steps);
-      return await WorkflowStep.filter({ work_order_id: workOrderId }, '-created_date');
-    } catch (error) {
-      console.error("Error creating workflow steps:", error);
-      return [];
-    }
+    // Agregar un paso por cada análisis/tarea en la OT
+    tareas.forEach((tarea, index) => {
+      defaultSteps.push({
+        id: `step-${order.id}-analysis-${index}`,
+        step_type: "ejecucion_analisis",
+        step_name: `Análisis: ${tarea.nombre_analisis || 'Análisis'}`,
+        status: "pendiente",
+        assigned_to: order.tecnico_asignado?.nombre_completo || "Técnico asignado",
+        method_used: tarea.nombre_analisis,
+        order: 3 + index
+      });
+    });
+
+    // Pasos finales
+    const finalSteps = [
+      {
+        id: `step-${order.id}-qc`,
+        step_type: "control_calidad",
+        step_name: "Control de Calidad",
+        status: "pendiente",
+        requires_approval: true,
+        order: defaultSteps.length + 1
+      },
+      {
+        id: `step-${order.id}-final`,
+        step_type: "aprobacion_final",
+        step_name: "Validación de Resultados",
+        status: "pendiente",
+        requires_approval: true,
+        order: defaultSteps.length + 2
+      }
+    ];
+
+    return [...defaultSteps, ...finalSteps];
+  };
+
+  // Genera historial de actividad basado en los pasos del workflow
+  const generateActivityHistory = (steps, order) => {
+    const activities = [];
+    
+    // Actividad de creación de OT
+    activities.push({
+      id: `activity-created`,
+      type: 'created',
+      step_name: 'Orden de Trabajo Creada',
+      timestamp: order.created_date,
+      user: order.tecnico_asignado?.nombre_completo || 'Sistema'
+    });
+
+    // Generar actividades por cada paso
+    steps.forEach(step => {
+      if (step.started_at) {
+        activities.push({
+          id: `activity-${step.id}-started`,
+          type: 'started',
+          step_name: step.step_name,
+          timestamp: step.started_at,
+          user: step.assigned_to || 'Sin asignar'
+        });
+      }
+      if (step.completed_at) {
+        activities.push({
+          id: `activity-${step.id}-completed`,
+          type: 'completed',
+          step_name: step.step_name,
+          timestamp: step.completed_at,
+          user: step.assigned_to || 'Sin asignar'
+        });
+      }
+    });
+
+    // Ordenar por fecha
+    return activities.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
   };
 
   const loadWorkflowData = useCallback(async () => {
     if (!otId) return;
     setIsLoading(true);
     try {
-      const [workOrderData] = await Promise.all([
-        WorkOrder.filter({ id: otId })
-      ]);
-      
-      const order = workOrderData[0];
+      // Obtener la orden de trabajo por ID
+      const order = await WorkOrder.getById(otId);
+      console.log('📋 Orden de trabajo cargada:', order);
       setWorkOrder(order);
       
       if (order) {
-        const sampleData = await Sample.filter({ internal_number: order.sample_internal_number });
-        const sampleRecord = sampleData[0];
-        setSample(sampleRecord);
+        // Cargar la muestra asociada a través de las tareas de la OT
+        if (order.tareas && order.tareas.length > 0) {
+          const firstTask = order.tareas[0];
+          if (firstTask.numero_muestra) {
+            try {
+              const sampleData = await Sample.getAll();
+              const sampleRecord = sampleData.find(s => 
+                s.sample_number === firstTask.numero_muestra || 
+                s.internal_number === firstTask.numero_muestra
+              );
+              setSample(sampleRecord);
+            } catch (sampleError) {
+              console.warn('No se pudo cargar la muestra:', sampleError);
+            }
+          }
+        }
         
-        let stepsData = await WorkflowStep.filter({ work_order_id: otId }, '-created_date');
-        
-        if (stepsData.length === 0 && sampleRecord) {
-          stepsData = await createDefaultWorkflowSteps(otId, sampleRecord.id);
+        // Intentar cargar pasos del workflow desde el backend
+        let stepsData = [];
+        try {
+          stepsData = await WorkflowStep.getStepsByWorkOrderId(otId);
+        } catch (stepsError) {
+          console.warn('No se pudieron cargar los pasos del workflow desde backend:', stepsError);
+        }
+
+        // Si no hay pasos, generar pasos por defecto
+        if (!stepsData || stepsData.length === 0) {
+          console.log('📝 Generando pasos de workflow por defecto...');
+          stepsData = generateDefaultWorkflowSteps(order);
         }
         
         setWorkflowSteps(stepsData);
+        
+        // Generar historial de actividad
+        const history = generateActivityHistory(stepsData, order);
+        setActivityHistory(history);
       }
     } catch (error) {
       console.error("Error loading workflow data:", error);
+      setWorkOrder(null);
     }
     setIsLoading(false);
   }, [otId]);
@@ -287,8 +213,29 @@ export default function SampleWorkflowPage() {
         updateData.completed_at = new Date().toISOString();
       }
 
-      await WorkflowStep.update(stepId, updateData);
-      loadWorkflowData();
+      // Intentar actualizar en backend
+      try {
+        await WorkflowStep.update(stepId, updateData);
+      } catch (backendError) {
+        console.warn('Backend update failed, updating locally:', backendError);
+      }
+      
+      // Actualizar localmente
+      setWorkflowSteps(prevSteps => 
+        prevSteps.map(step => 
+          step.id === stepId 
+            ? { ...step, ...updateData }
+            : step
+        )
+      );
+
+      // Actualizar historial de actividad
+      const updatedSteps = workflowSteps.map(step => 
+        step.id === stepId ? { ...step, ...updateData } : step
+      );
+      const history = generateActivityHistory(updatedSteps, workOrder);
+      setActivityHistory(history);
+      
     } catch (error) {
       console.error("Error updating step:", error);
     }
@@ -332,6 +279,11 @@ export default function SampleWorkflowPage() {
     );
   }
 
+  // Calcular información del header basada en tareas
+  const tareas = workOrder?.tareas || [];
+  const sampleNumbers = tareas.map(t => t.numero_muestra).filter(Boolean).join(', ') || workOrder?.sample_numbers || '';
+  const analysisNames = [...new Set(tareas.map(t => t.nombre_analisis).filter(Boolean))].join(', ') || workOrder?.test_parameter || '';
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -348,7 +300,7 @@ export default function SampleWorkflowPage() {
                 LIMS - Seguimiento de OT #{workOrder?.ot_number}
               </h1>
               <p className="text-gray-600 mt-1">
-                Muestra: {workOrder?.sample_numbers} • Análisis: {workOrder?.test_parameter}
+                Muestra: {sampleNumbers || 'N/A'} • Análisis: {analysisNames || 'N/A'}
               </p>
             </div>
           </div>

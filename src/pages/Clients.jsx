@@ -106,7 +106,8 @@ export default function ClientsPage() {
         quotesData = await Quote.getAll ? await Quote.getAll() : [];
         quotesData = Array.isArray(quotesData) ? quotesData : [];
       } catch (quoteError) {
-        console.error('Error reloading quotes for stats:', quoteError);
+        console.warn('Quotes service not available, continuing without quote stats:', quoteError.message);
+        quotesData = []; // Fallback to empty array
       }
       
       // Recalculate statistics for existing clients
@@ -164,7 +165,8 @@ export default function ClientsPage() {
         quotesData = Array.isArray(quotesData) ? quotesData : [];
         console.log('📊 Loaded quotes for client stats:', quotesData.length);
       } catch (quoteError) {
-        console.error('Error loading quotes for stats:', quoteError);
+        console.warn('Quotes service not available, continuing without quote stats:', quoteError.message);
+        quotesData = []; // Fallback to empty array
       }
       
       // Calculate real statistics for each client

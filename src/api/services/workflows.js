@@ -89,6 +89,65 @@ export const workflowsService = {
     const response = await apiClient.get(`/workflows/timeline/${sampleId}`);
     return response.data;
   },
+
+  // ============================================
+  // Alias methods for backward compatibility
+  // ============================================
+  
+  /**
+   * Alias for updateStep - backward compatibility
+   */
+  update: async (id, stepData) => {
+    try {
+      const response = await apiClient.put(`/workflow-steps/${id}`, stepData);
+      return response.data;
+    } catch (error) {
+      console.warn('Workflow step update not available in backend:', error.message);
+      return null;
+    }
+  },
+
+  /**
+   * Alias for createStep - backward compatibility
+   */
+  create: async (stepData) => {
+    try {
+      const response = await apiClient.post('/workflow-steps', stepData);
+      return response.data;
+    } catch (error) {
+      console.warn('Workflow step create not available in backend:', error.message);
+      return null;
+    }
+  },
+
+  /**
+   * Filter workflow steps - backward compatibility
+   */
+  filter: async (filters = {}, ordering = null) => {
+    try {
+      if (filters.work_order_id) {
+        const response = await apiClient.get(`/workflow-steps/work-order/${filters.work_order_id}`);
+        return Array.isArray(response.data) ? response.data : [];
+      }
+      if (filters.sample_id) {
+        const response = await apiClient.get(`/workflow-steps/sample/${filters.sample_id}`);
+        return Array.isArray(response.data) ? response.data : [];
+      }
+      const response = await apiClient.get('/workflow-steps', { params: filters });
+      return Array.isArray(response.data) ? response.data : [];
+    } catch (error) {
+      console.warn('Workflow steps filter not available:', error.message);
+      return [];
+    }
+  },
+
+  /**
+   * Bulk create workflow steps - backward compatibility
+   */
+  bulkCreate: async (steps) => {
+    console.warn('bulkCreate not implemented in backend - skipping');
+    return [];
+  },
 };
 
 export default workflowsService;
