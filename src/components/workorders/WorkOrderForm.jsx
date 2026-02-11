@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { X } from "lucide-react";
+import { Administration } from "@/api/entities";
 
 const priorities = [
   { value: "normal", label: "Normal" },
@@ -23,22 +24,10 @@ const statuses = [
   { value: "completada", label: "Completada" }
 ];
 
-const technicians = [
-  "Juan Pérez",
-  "Ana Martínez", 
-  "Carlos Silva",
-  "María González",
-  "Pedro Ramírez"
-];
-
 export default function WorkOrderForm({ order, samples, analyses, onSubmit, onCancel }) {
+  const [technicians, setTechnicians] = useState([]);
   const [formData, setFormData] = useState({
-    sample_id: order?.sample_id || '',
-    sample_internal_number: order?.sample_internal_number || '',
-    test_parameter: order?.test_parameter || '',
-    test_method: order?.test_method || '',
     assigned_technician: order?.assigned_technician || '',
-    equipment_used: order?.equipment_used || '',
     status: order?.status || 'generada',
     priority: order?.priority || 'normal'
   });
@@ -50,32 +39,31 @@ export default function WorkOrderForm({ order, samples, analyses, onSubmit, onCa
     }));
   };
 
-  const handleSampleSelect = (sampleId) => {
-    const selectedSample = samples.find(s => s.id === sampleId);
-    if (selectedSample) {
-      setFormData(prev => ({
-        ...prev,
-        sample_id: sampleId,
-        sample_internal_number: selectedSample.internal_number
-      }));
-    }
-  };
-
-  const handleAnalysisSelect = (analysisName) => {
-    const selectedAnalysis = analyses.find(a => a.name === analysisName);
-    if (selectedAnalysis) {
-      setFormData(prev => ({
-        ...prev,
-        test_parameter: analysisName,
-        test_method: selectedAnalysis.method || ''
-      }));
-    }
-  };
-
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmit(formData);
   };
+
+  // Cargar técnicos activos del backend
+  useEffect(() => {
+    const loadTechnicians = async () => {
+      try {
+        const users = await Administration.getActiveUsers();
+        // Mapear usuarios a formato de técnicos (nombre completo)
+        const techList = users.map(user => ({
+          id: user.id,
+          name: `${user.nombre} ${user.apellido}`,
+          email: user.email
+        }));
+        setTechnicians(techList);
+      } catch (error) {
+        console.error('Error loading technicians:', error);
+        // Fallback a lista vacía si falla
+        setTechnicians([]);
+      }
+    };
+    loadTechnicians();
+  }, []);
 
   useEffect(() => {
     // Bloquear scroll del body cuando el modal está abierto
@@ -110,88 +98,24 @@ export default function WorkOrderForm({ order, samples, analyses, onSubmit, onCa
         
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Selección de muestra */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="sample">Muestra *</Label>
-                <Select 
-                  value={formData.sample_id} 
-                  onValueChange={handleSampleSelect}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar muestra" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {samples.map((sample) => (
-                      <SelectItem key={sample.id} value={sample.id}>
-                        {sample.internal_number} - {sample.client_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="analysis">Análisis *</Label>
-                <Select 
-                  value={formData.test_parameter} 
-                  onValueChange={handleAnalysisSelect}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar análisis" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {analyses.map((analysis) => (
-                      <SelectItem key={analysis.id} value={analysis.name}>
-                        {analysis.name} ({analysis.code})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Método y técnico */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="method">Método de Análisis</Label>
-                <Input
-                  id="method"
-                  value={formData.test_method}
-                  onChange={(e) => handleInputChange('test_method', e.target.value)}
-                  placeholder="Ej: NCh 409/1, APHA 3120"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="technician">Técnico Asignado</Label>
-                <Select 
-                  value={formData.assigned_technician} 
-                  onValueChange={(value) => handleInputChange('assigned_technician', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar técnico" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {technicians.map((tech) => (
-                      <SelectItem key={tech} value={tech}>
-                        {tech}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Equipos utilizados */}
+            {/* Técnico Asignado */}
             <div className="space-y-2">
-              <Label htmlFor="equipment">Equipos Utilizados</Label>
-              <Input
-                id="equipment"
-                value={formData.equipment_used}
-                onChange={(e) => handleInputChange('equipment_used', e.target.value)}
-                placeholder="Ej: Espectrómetro ICP, Balanza analítica"
-              />
+              <Label htmlFor="technician">Técnico Asignado</Label>
+              <Select 
+                value={formData.assigned_technician} 
+                onValueChange={(value) => handleInputChange('assigned_technician', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar técnico" />
+                </SelectTrigger>
+                <SelectContent>
+                  {technicians.map((tech) => (
+                    <SelectItem key={tech.id} value={tech.id}>
+                      {tech.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Estado y prioridad */}

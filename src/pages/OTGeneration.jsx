@@ -32,6 +32,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import WorkOrderForm from '@/components/workorders/WorkOrderForm';
 
 // Configuration for Work Order status badges
 const statusConfig = {
@@ -62,6 +63,8 @@ export default function OTGenerationPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectionMode, setSelectionMode] = useState("individual");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createFormValues, setCreateFormValues] = useState(null);
   const [lastGeneration, setLastGeneration] = useState(null);
   const [activeTab, setActiveTab] = useState("list"); // Set initial active tab to 'list'
 
@@ -257,39 +260,57 @@ export default function OTGenerationPage() {
       alert('Por favor selecciona al menos una tarea');
       return;
     }
-    
-    // Verificar que hay un usuario autenticado para asignar como técnico
-    if (!user?.id) {
-      alert('No se pudo identificar el usuario. Por favor, inicia sesión nuevamente.');
-      return;
-    }
-    
+
+    // Open create modal to request required fields before generating
+    setShowCreateModal(true);
+  };
+
+  const handleCreateWorkOrder = async (formData) => {
+    // formData comes from WorkOrderForm: includes assigned_technician (UUID), status, priority
     setIsGenerating(true);
     try {
-      console.log('🚀 Generando OT con tareas:', selectedTasks);
-      console.log('👤 Usuario asignado:', user);
-      
-      // Crear la orden de trabajo usando el endpoint del backend
+      // Use the technician selected in the form; fall back to current user
+      const tecnicoId = formData.assigned_technician || user?.id;
+      if (!tecnicoId) {
+        alert('No se pudo identificar el técnico. Por favor, selecciona uno o inicia sesión nuevamente.');
+        setIsGenerating(false);
+        return;
+      }
+
       const otData = {
         tarea_ids: selectedTasks,
-        tecnico_asignado_id: user.id
+        tecnico_asignado_id: tecnicoId
       };
-      
+
       console.log('📤 Enviando datos al backend:', otData);
-      
       const createdOrder = await WorkOrder.create(otData);
-      
-      console.log('✅ Orden de trabajo creada:', createdOrder);
-      
+
+      // Merge front-end form values into the returned order for immediate UI feedback
+      const merged = {
+        ...createdOrder,
+        status: formData.status || createdOrder.status,
+        priority: formData.priority || createdOrder.priority,
+        sample_numbers: selectedTasks.map(id => {
+          const t = pendingTasks.find(pt => pt.id === id);
+          return t ? (t.sample_number || t.numero_muestra || '') : '';
+        }).filter(Boolean).join(', '),
+        sample_count: selectedTasks.length
+      };
+
+      // Update local list optimistically
+      setWorkOrders(prev => [merged, ...(prev || [])]);
+
       setLastGeneration(new Date());
       setSelectedTasks([]);
       setSelectedAnalysis(null);
       setSelectedTemplate(null);
-      setActiveTab("list");
-      loadData();
+      setActiveTab('list');
+      setShowCreateModal(false);
+      setCreateFormValues(null);
+      // Optionally refresh from backend
+      try { loadData(); } catch(e){ /* ignore */ }
     } catch (error) {
-      console.error("Error generating work order:", error);
-      console.error("Server response:", error.response?.data);
+      console.error('Error generating work order:', error);
       const errorMsg = error.serverMessage || error.response?.data?.message || error.message || 'Error desconocido';
       alert(`Error al generar la OT: ${errorMsg}`);
     }
@@ -304,10 +325,19 @@ export default function OTGenerationPage() {
   const handleUpdateWorkOrder = async (updatedData) => {
     if (!editingWorkOrder) return;
     try {
-      await WorkOrder.update(editingWorkOrder.id, updatedData);
+      // Try to update status in backend if available
+      if (updatedData.status) {
+        try {
+          await WorkOrder.updateStatus(editingWorkOrder.id, updatedData.status);
+        } catch (e) {
+          console.warn('Backend does not support updateStatus or failed:', e);
+        }
+      }
+
+      // Optimistically update local list for fields that backend may not persist
+      setWorkOrders(prev => prev.map(wo => wo.id === editingWorkOrder.id ? { ...wo, ...updatedData } : wo));
       setShowEditModal(false);
       setEditingWorkOrder(null);
-      loadData(); // Refresh the list
     } catch (error) {
       console.error("Error updating work order:", error);
     }
@@ -427,6 +457,12 @@ export default function OTGenerationPage() {
                                   </span>
                                 </div>
                               )}
+                              {order.assigned_technician && (
+                                <div className="flex items-center gap-1">
+                                  <User className="w-4 h-4" />
+                                  <span>{order.assigned_technician}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -435,9 +471,11 @@ export default function OTGenerationPage() {
                           <Button variant="outline" size="icon" onClick={() => handleEditWorkOrder(order)}>
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button variant="destructive" size="icon" onClick={() => handleDeleteWorkOrder(order.id)}>
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {currentStatus !== 'finalizada' && currentStatus !== 'completada' && (
+                            <Button variant="destructive" size="icon" onClick={() => handleDeleteWorkOrder(order.id)}>
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
                           <Link to={`${createPageUrl("SampleWorkflow")}?otId=${order.id}`}>
                             <Button className="bg-blue-600 hover:bg-blue-700">
                               <Activity className="w-4 h-4 mr-2" />
@@ -785,6 +823,16 @@ export default function OTGenerationPage() {
             setShowEditModal(false);
             setEditingWorkOrder(null);
           }}
+        />
+      )}
+      {/* Modal de creación de OT: pedir datos antes de generar */}
+      {showCreateModal && (
+        <WorkOrderForm
+          order={null}
+          samples={pendingTasks.map(t => ({ id: t.id, internal_number: t.sample_number || t.numero_muestra, client_name: t.client?.name || '' }))}
+          analyses={analyses}
+          onSubmit={(formData) => handleCreateWorkOrder(formData)}
+          onCancel={() => { setShowCreateModal(false); setCreateFormValues(null); }}
         />
       )}
     </div>

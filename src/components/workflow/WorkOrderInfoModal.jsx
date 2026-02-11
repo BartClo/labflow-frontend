@@ -8,7 +8,6 @@ import {
   User,
   Calendar,
   Settings,
-  MapPin,
   Building2,
   FileText,
   Clock,
@@ -53,15 +52,24 @@ const InfoCard = ({ icon: Icon, title, value, iconColor = "text-gray-500" }) => 
   </div>
 );
 
-export default function WorkOrderInfoModal({ workOrder, sample, onClose }) {
+export default function WorkOrderInfoModal({ workOrder, onClose }) {
   if (!workOrder) return null;
 
-  // Extraer información de las tareas
-  const tareas = workOrder.tareas || [];
-  const sampleNumbers = tareas.map(t => t.numero_muestra).filter(Boolean).join(', ') || workOrder.sample_numbers || 'N/A';
-  const analysisNames = [...new Set(tareas.map(t => t.nombre_analisis).filter(Boolean))].join(', ') || workOrder.test_parameter || 'N/A';
-  const clientName = tareas[0]?.cliente?.nombre || sample?.client_name || 'N/A';
-  const priority = workOrder.priority || tareas[0]?.prioridad?.toLowerCase() || 'normal';
+  // Extraer información de las tareas (pueden venir como workOrder.tareas o workOrder.tasks)
+  const tareas = workOrder.tareas || workOrder.tasks || [];
+  const sampleNumbers = tareas
+    .map(t => t.numero_muestra || t.numeroMuestra)
+    .filter(Boolean)
+    .join(', ') || workOrder.sample_numbers || 'N/A';
+  const analysisNames = [...new Set(
+    tareas.map(t => t.nombre_analisis || t.nombreAnalisis).filter(Boolean)
+  )].join(', ') || workOrder.test_parameter || 'N/A';
+  const priority = workOrder.priority || 'normal';
+
+  // Technician info from transform
+  const tecnicoNombre = workOrder.tecnico_asignado?.nombre_completo
+    || workOrder.assigned_technician
+    || 'Sin asignar';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -96,25 +104,25 @@ export default function WorkOrderInfoModal({ workOrder, sample, onClose }) {
             {/* Muestra(s) */}
             <InfoCard
               icon={Droplet}
-              title="Muestra"
+              title="Muestra(s)"
               value={sampleNumbers}
               iconColor="text-blue-600"
             />
 
-            {/* Cliente */}
+            {/* Código de barras (del primer task) */}
             <InfoCard
               icon={Building2}
-              title="Cliente"
-              value={clientName}
+              title="Código de Barras"
+              value={tareas[0]?.codigo_barras || tareas[0]?.codigoBarras || 'N/A'}
               iconColor="text-blue-600"
             />
 
-            {/* Punto de muestreo */}
+            {/* Total de muestras */}
             <InfoCard
-              icon={MapPin}
-              title="Punto de Muestreo"
-              value={sample?.sampling_point || tareas[0]?.punto_muestreo || 'N/A'}
-              iconColor="text-red-600"
+              icon={FlaskConical}
+              title="Total Muestras"
+              value={`${tareas.length} muestra${tareas.length !== 1 ? 's' : ''}`}
+              iconColor="text-purple-600"
             />
 
             {/* Análisis */}
@@ -125,31 +133,31 @@ export default function WorkOrderInfoModal({ workOrder, sample, onClose }) {
               iconColor="text-purple-600"
             />
 
-            {/* Método/Plantilla */}
+            {/* Estado */}
             <InfoCard
               icon={Settings}
-              title="Método"
-              value={workOrder.test_method || `${tareas.length} análisis asignados`}
+              title="Estado"
+              value={statusConfig[workOrder.status?.toLowerCase()]?.label || workOrder.status || 'N/A'}
               iconColor="text-orange-600"
-            />
-
-            {/* Fecha de recepción */}
-            <InfoCard
-              icon={Calendar}
-              title="Fecha de Recepción"
-              value={sample?.reception_date 
-                ? format(new Date(sample.reception_date), 'dd/MM/yyyy HH:mm', { locale: es })
-                : 'N/A'}
-              iconColor="text-indigo-600"
             />
 
             {/* Fecha de creación de OT */}
             <InfoCard
-              icon={FileText}
+              icon={Calendar}
               title="OT Creada"
               value={workOrder.created_date 
                 ? format(new Date(workOrder.created_date), 'dd/MM/yyyy HH:mm', { locale: es })
                 : 'N/A'}
+              iconColor="text-indigo-600"
+            />
+
+            {/* Fecha de finalización */}
+            <InfoCard
+              icon={FileText}
+              title="Fecha Finalización"
+              value={workOrder.completion_date 
+                ? format(new Date(workOrder.completion_date), 'dd/MM/yyyy HH:mm', { locale: es })
+                : 'En curso'}
               iconColor="text-gray-600"
             />
 
@@ -157,15 +165,15 @@ export default function WorkOrderInfoModal({ workOrder, sample, onClose }) {
             <InfoCard
               icon={User}
               title="Técnico Asignado"
-              value={workOrder.tecnico_asignado?.nombre_completo || workOrder.assigned_technician || 'Sin asignar'}
+              value={tecnicoNombre}
               iconColor="text-green-600"
             />
 
-            {/* Total de tareas */}
+            {/* Tareas completadas */}
             <InfoCard
               icon={Clock}
-              title="Total Tareas"
-              value={`${tareas.length} tarea${tareas.length !== 1 ? 's' : ''}`}
+              title="Progreso"
+              value={`${workOrder.completed_tasks || 0} de ${tareas.length} completadas`}
               iconColor="text-blue-600"
             />
           </div>
@@ -179,15 +187,22 @@ export default function WorkOrderInfoModal({ workOrder, sample, onClose }) {
                   <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
                     <div className="flex items-center gap-3">
                       <FlaskConical className="w-4 h-4 text-purple-600" />
-                      <span className="text-sm font-medium">{tarea.nombre_analisis || 'Análisis'}</span>
+                      <div>
+                        <span className="text-sm font-medium">{tarea.nombre_analisis || tarea.nombreAnalisis || 'Análisis'}</span>
+                        <span className="text-xs text-gray-500 ml-2">{tarea.numero_muestra || tarea.numeroMuestra}</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500">{tarea.numero_muestra}</span>
-                      {tarea.prioridad && tarea.prioridad !== 'MEDIA' && (
-                        <Badge className={`${priorityConfig[tarea.prioridad?.toLowerCase()]?.color || 'bg-gray-100'} text-xs`}>
-                          {tarea.prioridad}
-                        </Badge>
+                      {(tarea.codigo_barras || tarea.codigoBarras) && (
+                        <span className="text-xs text-gray-400">[{tarea.codigo_barras || tarea.codigoBarras}]</span>
                       )}
+                      <Badge className={`text-xs ${
+                        (tarea.estado_analisis || tarea.estadoAnalisis) === 'COMPLETADO' ? 'bg-green-100 text-green-800' :
+                        (tarea.estado_analisis || tarea.estadoAnalisis) === 'EN_PROCESO' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {tarea.estado_analisis || tarea.estadoAnalisis || 'PENDIENTE'}
+                      </Badge>
                     </div>
                   </div>
                 ))}

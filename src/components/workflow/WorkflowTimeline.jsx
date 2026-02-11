@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import ResultadoCapturaModal from './ResultadoCapturaModal';
 
 const statusConfig = {
   pendiente: { 
@@ -49,11 +50,12 @@ const statusConfig = {
 export default function WorkflowTimeline({ 
   workflowSteps, 
   workOrder, 
-  sample, 
   onStepClick, 
   onStatusUpdate, 
   isLoading 
 }) {
+  const [showCapturaModal, setShowCapturaModal] = useState(false);
+  const [currentStepForModal, setCurrentStepForModal] = useState(null);
   if (isLoading) {
     return (
       <Card className="h-[calc(100vh-180px)]">
@@ -180,6 +182,13 @@ export default function WorkflowTimeline({
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
+                          // Si es la última tarea del workflow, abrir modal de captura
+                          const isLast = index === workflowSteps.length - 1;
+                          if (isLast) {
+                            setCurrentStepForModal(step);
+                            setShowCapturaModal(true);
+                            return;
+                          }
                           onStatusUpdate && onStatusUpdate(step.id, 'completado');
                         }}
                         className="bg-green-600 hover:bg-green-700"
@@ -189,7 +198,7 @@ export default function WorkflowTimeline({
                       </Button>
                     )}
                     
-                    {step.status === 'pendiente' && index === workflowSteps.findIndex(s => s.status === 'pendiente') && (
+                    {step.status === 'pendiente' && index === workflowSteps.findIndex(s => s.status === 'pendiente') && !workflowSteps.some(s => s.status === 'en_progreso') && (
                       <Button
                         size="sm"
                         onClick={(e) => {
@@ -209,6 +218,20 @@ export default function WorkflowTimeline({
           </div>
         </div>
       </CardContent>
+      {/* Modal de captura para la última tarea */}
+      <ResultadoCapturaModal
+        open={showCapturaModal}
+        onOpenChange={(v) => { setShowCapturaModal(v); if (!v) setCurrentStepForModal(null); }}
+        ordenTrabajoId={workOrder?.id || workOrder?.idOrdenTrabajo}
+        muestrasOT={workOrder?.tasks || []}
+        onResultadoGuardado={() => {
+          if (currentStepForModal) {
+            onStatusUpdate && onStatusUpdate(currentStepForModal.id, 'completado');
+          }
+          setShowCapturaModal(false);
+          setCurrentStepForModal(null);
+        }}
+      />
     </Card>
   );
 }

@@ -1,153 +1,138 @@
 /**
  * Workflows Service
  * 
- * Handles all workflow and workflow step-related API operations
+ * Handles all workflow operations using the real backend endpoints:
+ *   GET  /api/ordenes/{id}/workflow             → obtener progreso del workflow
+ *   POST /api/ordenes/{id}/workflow/completar-etapa → completar etapa actual y avanzar
+ *   POST /api/ordenes/{id}/crear-ot-rechazadas  → crear nueva OT con muestras rechazadas
  */
 
 import apiClient from '../client';
 
+/**
+ * Transform backend workflow progress to frontend-friendly format.
+ * Backend returns: { etapas[], etapa_actual, etapa_actual_orden, porcentaje_completado, ... }
+ * Frontend expects an array of steps with: id, step_type, step_name, status, order, ...
+ */
+const transformWorkflowProgress = (progress) => {
+  if (!progress || !progress.etapas) return { steps: [], progress };
+
+  const statusMap = {
+    PENDIENTE: 'pendiente',
+    EN_PROGRESO: 'en_progreso',
+    COMPLETADO: 'completado',
+  };
+
+  const steps = progress.etapas.map((etapa) => ({
+    id: etapa.id_etapa,
+    step_type: etapa.tipo_etapa?.toLowerCase(),
+    step_name: etapa.nombre_etapa,
+    status: statusMap[etapa.estado_etapa] || etapa.estado_etapa?.toLowerCase() || 'pendiente',
+    order: etapa.orden_secuencia,
+    assigned_to: etapa.tecnico_asignado || null,
+    assigned_to_id: etapa.tecnico_asignado_id || null,
+    started_at: etapa.fecha_inicio || null,
+    completed_at: etapa.fecha_completado || null,
+    notes: etapa.notas || null,
+    created_at: etapa.created_at || null,
+    updated_at: etapa.updated_at || null,
+  }));
+
+  return { steps, progress };
+};
+
 export const workflowsService = {
   /**
-   * Get all workflow steps
+   * Get workflow progress for a work order (the real endpoint)
+   * GET /api/ordenes/{workOrderId}/workflow
+   * @returns {{ steps: Array, progress: Object }}
    */
-  getAllSteps: async (params = {}) => {
-    const response = await apiClient.get('/workflow-steps', { params });
-    return response.data;
+  getWorkflowByOrderId: async (workOrderId) => {
+    const response = await apiClient.get(`/ordenes/${workOrderId}/workflow`);
+    return transformWorkflowProgress(response.data);
   },
 
   /**
-   * Get a single workflow step by ID
+   * Complete the current workflow stage and advance to the next one
+   * POST /api/ordenes/{workOrderId}/workflow/completar-etapa
+   * @param {UUID} workOrderId
+   * @param {string|null} notas - optional notes
+   * @returns {{ steps: Array, progress: Object }}
    */
-  getStepById: async (id) => {
-    const response = await apiClient.get(`/workflow-steps/${id}`);
-    return response.data;
+  completarEtapa: async (workOrderId, notas = null) => {
+    const body = notas ? { notas } : {};
+    const response = await apiClient.post(`/ordenes/${workOrderId}/workflow/completar-etapa`, body);
+    return transformWorkflowProgress(response.data);
   },
 
   /**
-   * Create a new workflow step
+   * Create a new OT with rejected samples from the given OT
+   * POST /api/ordenes/{workOrderId}/crear-ot-rechazadas
    */
-  createStep: async (stepData) => {
-    const response = await apiClient.post('/workflow-steps', stepData);
+  crearOTRechazadas: async (workOrderId, { tecnicoAsignadoId = null, notas = null } = {}) => {
+    const body = {};
+    if (tecnicoAsignadoId) body.tecnico_asignado_id = tecnicoAsignadoId;
+    if (notas) body.notas = notas;
+    const response = await apiClient.post(`/ordenes/${workOrderId}/crear-ot-rechazadas`, body);
     return response.data;
   },
 
-  /**
-   * Update an existing workflow step
-   */
-  updateStep: async (id, stepData) => {
-    const response = await apiClient.put(`/workflow-steps/${id}`, stepData);
-    return response.data;
-  },
+  // ============================================
+  // Backward-compatible aliases used by existing pages
+  // ============================================
 
   /**
-   * Delete a workflow step
-   */
-  deleteStep: async (id) => {
-    const response = await apiClient.delete(`/workflow-steps/${id}`);
-    return response.data;
-  },
-
-  /**
-   * Get workflow steps by sample ID
-   */
-  getStepsBySampleId: async (sampleId) => {
-    const response = await apiClient.get(`/workflow-steps/sample/${sampleId}`);
-    return response.data;
-  },
-
-  /**
-   * Get workflow steps by work order ID
+   * Alias: get workflow steps by work order ID
+   * Used by SampleWorkflow.jsx via WorkflowStep.getStepsByWorkOrderId()
+   * Calls the real endpoint and returns just the steps array.
    */
   getStepsByWorkOrderId: async (workOrderId) => {
-    const response = await apiClient.get(`/workflow-steps/work-order/${workOrderId}`);
-    return response.data;
-  },
-
-  /**
-   * Update workflow step status
-   */
-  updateStepStatus: async (id, status, notes = '') => {
-    const response = await apiClient.patch(`/workflow-steps/${id}/status`, {
-      status,
-      notes,
-    });
-    return response.data;
-  },
-
-  /**
-   * Complete a workflow step
-   */
-  completeStep: async (id, data = {}) => {
-    const response = await apiClient.post(`/workflow-steps/${id}/complete`, data);
-    return response.data;
-  },
-
-  /**
-   * Get workflow timeline for a sample
-   */
-  getTimeline: async (sampleId) => {
-    const response = await apiClient.get(`/workflows/timeline/${sampleId}`);
-    return response.data;
-  },
-
-  // ============================================
-  // Alias methods for backward compatibility
-  // ============================================
-  
-  /**
-   * Alias for updateStep - backward compatibility
-   */
-  update: async (id, stepData) => {
     try {
-      const response = await apiClient.put(`/workflow-steps/${id}`, stepData);
-      return response.data;
+      const { steps } = await workflowsService.getWorkflowByOrderId(workOrderId);
+      return steps;
     } catch (error) {
-      console.warn('Workflow step update not available in backend:', error.message);
-      return null;
-    }
-  },
-
-  /**
-   * Alias for createStep - backward compatibility
-   */
-  create: async (stepData) => {
-    try {
-      const response = await apiClient.post('/workflow-steps', stepData);
-      return response.data;
-    } catch (error) {
-      console.warn('Workflow step create not available in backend:', error.message);
-      return null;
-    }
-  },
-
-  /**
-   * Filter workflow steps - backward compatibility
-   */
-  filter: async (filters = {}, ordering = null) => {
-    try {
-      if (filters.work_order_id) {
-        const response = await apiClient.get(`/workflow-steps/work-order/${filters.work_order_id}`);
-        return Array.isArray(response.data) ? response.data : [];
-      }
-      if (filters.sample_id) {
-        const response = await apiClient.get(`/workflow-steps/sample/${filters.sample_id}`);
-        return Array.isArray(response.data) ? response.data : [];
-      }
-      const response = await apiClient.get('/workflow-steps', { params: filters });
-      return Array.isArray(response.data) ? response.data : [];
-    } catch (error) {
-      console.warn('Workflow steps filter not available:', error.message);
+      console.warn('Error loading workflow steps:', error.message);
       return [];
     }
   },
 
   /**
-   * Bulk create workflow steps - backward compatibility
+   * Alias: update step — no longer directly available; use completarEtapa instead.
+   * Kept for backward compatibility; logs a warning.
    */
-  bulkCreate: async (steps) => {
-    console.warn('bulkCreate not implemented in backend - skipping');
-    return [];
+  update: async (id, stepData) => {
+    console.warn('workflowsService.update() is deprecated. Use completarEtapa(workOrderId) instead.');
+    return null;
   },
+
+  /**
+   * Alias: filter steps by work_order_id
+   */
+  filter: async (filters = {}) => {
+    try {
+      if (filters.work_order_id) {
+        return await workflowsService.getStepsByWorkOrderId(filters.work_order_id);
+      }
+      console.warn('workflowsService.filter() only supports work_order_id filter');
+      return [];
+    } catch (error) {
+      console.warn('workflowsService.filter() error:', error.message);
+      return [];
+    }
+  },
+
+  // Legacy no-ops
+  create: async () => null,
+  bulkCreate: async () => [],
+  getAllSteps: async () => [],
+  getStepById: async () => null,
+  createStep: async () => null,
+  updateStep: async () => null,
+  deleteStep: async () => null,
+  getStepsBySampleId: async () => [],
+  updateStepStatus: async () => null,
+  completeStep: async () => null,
+  getTimeline: async () => [],
 };
 
 export default workflowsService;

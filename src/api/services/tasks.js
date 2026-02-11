@@ -110,6 +110,52 @@ export const tasksService = {
       throw error;
     }
   }
+  ,
+
+  /**
+   * Validate a barcode against a work order and return task info including limits
+   * @param {UUID} ordenId
+   * @param {string} codigoBarras
+   */
+  validarCodigoBarrasEnOT: async (ordenId, codigoBarras) => {
+    try {
+      const response = await apiClient.get('/tareas/validar-barcode', { params: { ordenId, codigoBarras } });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error validating barcode:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Guarda un resultado sencillo (un solo valor) para una tarea
+   * payload: { id_muestra_analisis, codigo_barras, valor_medido, observaciones }
+   */
+  guardarResultado: async (payload) => {
+    try {
+      const response = await apiClient.post('/tareas/guardar-resultado', payload);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error saving result:', error);
+      throw error;
+    }
+  }
+
+  ,
+
+  /**
+   * Rechazar una muestra (marca la muestra como RECHAZADA)
+   * @param {UUID} muestraId
+   */
+  rechazarMuestra: async (muestraId) => {
+    try {
+      const response = await apiClient.post(`/muestras/${muestraId}/rechazar`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error rejecting sample:', error);
+      throw error;
+    }
+  }
 };
 
 export default tasksService;

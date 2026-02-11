@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Sample, WorkOrder, WorkflowStep } from "@/api/entities";
+import { WorkOrder, WorkflowStep } from "@/api/entities";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -30,76 +30,13 @@ export default function SampleWorkflowPage() {
   const otId = searchParams.get('otId');
   
   const [workOrder, setWorkOrder] = useState(null);
-  const [sample, setSample] = useState(null);
   const [workflowSteps, setWorkflowSteps] = useState([]);
+  const [workflowProgress, setWorkflowProgress] = useState(null);
   const [activityHistory, setActivityHistory] = useState([]);
   const [selectedStep, setSelectedStep] = useState(null);
   const [showInsights, setShowInsights] = useState(false);
   const [showOTInfo, setShowOTInfo] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Genera pasos de workflow por defecto basados en las tareas de la OT
-  const generateDefaultWorkflowSteps = (order) => {
-    const tareas = order.tareas || [];
-    const now = new Date();
-    
-    // Pasos estándar para cualquier OT
-    const defaultSteps = [
-      {
-        id: `step-${order.id}-1`,
-        step_type: "recepcion",
-        step_name: "Registro de Recepción",
-        status: "completado",
-        assigned_to: order.tecnico_asignado?.nombre_completo || "Técnico asignado",
-        started_at: order.created_date,
-        completed_at: order.created_date,
-        order: 1
-      },
-      {
-        id: `step-${order.id}-2`,
-        step_type: "preparacion_muestra",
-        step_name: "Preparación de Muestra",
-        status: "pendiente",
-        assigned_to: order.tecnico_asignado?.nombre_completo || "Técnico asignado",
-        order: 2
-      }
-    ];
-
-    // Agregar un paso por cada análisis/tarea en la OT
-    tareas.forEach((tarea, index) => {
-      defaultSteps.push({
-        id: `step-${order.id}-analysis-${index}`,
-        step_type: "ejecucion_analisis",
-        step_name: `Análisis: ${tarea.nombre_analisis || 'Análisis'}`,
-        status: "pendiente",
-        assigned_to: order.tecnico_asignado?.nombre_completo || "Técnico asignado",
-        method_used: tarea.nombre_analisis,
-        order: 3 + index
-      });
-    });
-
-    // Pasos finales
-    const finalSteps = [
-      {
-        id: `step-${order.id}-qc`,
-        step_type: "control_calidad",
-        step_name: "Control de Calidad",
-        status: "pendiente",
-        requires_approval: true,
-        order: defaultSteps.length + 1
-      },
-      {
-        id: `step-${order.id}-final`,
-        step_type: "aprobacion_final",
-        step_name: "Validación de Resultados",
-        status: "pendiente",
-        requires_approval: true,
-        order: defaultSteps.length + 2
-      }
-    ];
-
-    return [...defaultSteps, ...finalSteps];
-  };
 
   // Genera historial de actividad basado en los pasos del workflow
   const generateActivityHistory = (steps, order) => {
@@ -111,7 +48,7 @@ export default function SampleWorkflowPage() {
       type: 'created',
       step_name: 'Orden de Trabajo Creada',
       timestamp: order.created_date,
-      user: order.tecnico_asignado?.nombre_completo || 'Sistema'
+      user: order.assigned_technician || 'Sistema'
     });
 
     // Generar actividades por cada paso
@@ -144,41 +81,22 @@ export default function SampleWorkflowPage() {
     if (!otId) return;
     setIsLoading(true);
     try {
-      // Obtener la orden de trabajo por ID
+      // 1. Obtener la orden de trabajo por ID (incluye tareas con barcodes)
       const order = await WorkOrder.getById(otId);
       console.log('📋 Orden de trabajo cargada:', order);
       setWorkOrder(order);
       
       if (order) {
-        // Cargar la muestra asociada a través de las tareas de la OT
-        if (order.tareas && order.tareas.length > 0) {
-          const firstTask = order.tareas[0];
-          if (firstTask.numero_muestra) {
-            try {
-              const sampleData = await Sample.getAll();
-              const sampleRecord = sampleData.find(s => 
-                s.sample_number === firstTask.numero_muestra || 
-                s.internal_number === firstTask.numero_muestra
-              );
-              setSample(sampleRecord);
-            } catch (sampleError) {
-              console.warn('No se pudo cargar la muestra:', sampleError);
-            }
-          }
-        }
-        
-        // Intentar cargar pasos del workflow desde el backend
+        // 2. Obtener workflow real del backend
         let stepsData = [];
         try {
-          stepsData = await WorkflowStep.getStepsByWorkOrderId(otId);
-        } catch (stepsError) {
-          console.warn('No se pudieron cargar los pasos del workflow desde backend:', stepsError);
-        }
-
-        // Si no hay pasos, generar pasos por defecto
-        if (!stepsData || stepsData.length === 0) {
-          console.log('📝 Generando pasos de workflow por defecto...');
-          stepsData = generateDefaultWorkflowSteps(order);
+          const { steps, progress } = await WorkflowStep.getWorkflowByOrderId(otId);
+          stepsData = steps;
+          setWorkflowProgress(progress);
+          console.log('✅ Workflow cargado desde backend:', steps.length, 'etapas');
+        } catch (workflowError) {
+          console.warn('No se pudo cargar el workflow desde backend:', workflowError);
+          stepsData = [];
         }
         
         setWorkflowSteps(stepsData);
@@ -198,46 +116,43 @@ export default function SampleWorkflowPage() {
     loadWorkflowData();
   }, [loadWorkflowData]);
 
-  const updateStepStatus = async (stepId, newStatus, additionalData = {}) => {
+  /**
+   * Completes the current active workflow stage via the real backend endpoint.
+   * The backend handles advancing to the next stage automatically.
+   */
+  const advanceWorkflowStage = async (notas = null) => {
+    if (!otId) return;
     try {
-      const updateData = {
-        status: newStatus,
-        ...additionalData
-      };
+      const { steps, progress } = await WorkflowStep.completarEtapa(otId, notas);
+      setWorkflowSteps(steps);
+      setWorkflowProgress(progress);
       
-      if (newStatus === 'en_progreso' && !additionalData.started_at) {
-        updateData.started_at = new Date().toISOString();
-      }
+      // Refresh order to get updated status
+      const updatedOrder = await WorkOrder.getById(otId);
+      setWorkOrder(updatedOrder);
       
-      if (newStatus === 'completado' && !additionalData.completed_at) {
-        updateData.completed_at = new Date().toISOString();
-      }
-
-      // Intentar actualizar en backend
-      try {
-        await WorkflowStep.update(stepId, updateData);
-      } catch (backendError) {
-        console.warn('Backend update failed, updating locally:', backendError);
-      }
-      
-      // Actualizar localmente
-      setWorkflowSteps(prevSteps => 
-        prevSteps.map(step => 
-          step.id === stepId 
-            ? { ...step, ...updateData }
-            : step
-        )
-      );
-
-      // Actualizar historial de actividad
-      const updatedSteps = workflowSteps.map(step => 
-        step.id === stepId ? { ...step, ...updateData } : step
-      );
-      const history = generateActivityHistory(updatedSteps, workOrder);
+      const history = generateActivityHistory(steps, updatedOrder);
       setActivityHistory(history);
       
+      console.log('✅ Etapa completada. Progreso:', progress?.porcentaje_completado + '%');
     } catch (error) {
-      console.error("Error updating step:", error);
+      console.error("Error completing workflow stage:", error);
+      alert(error?.response?.data?.message || error?.response?.data?.error || 'Error al completar la etapa');
+    }
+  };
+
+  /**
+   * Legacy updateStepStatus — maps to advanceWorkflowStage.
+   * The backend does not support updating individual steps by ID;
+   * it always completes the current active step and advances.
+   */
+  const updateStepStatus = async (stepId, newStatus, additionalData = {}) => {
+    if (newStatus === 'completado') {
+      await advanceWorkflowStage(additionalData.notas || null);
+    } else if (newStatus === 'en_progreso') {
+      // Backend auto-starts the next step when the previous one completes.
+      // If user clicks "Iniciar" on the first pending step, just advance.
+      await advanceWorkflowStage(null);
     }
   };
 
@@ -332,7 +247,6 @@ export default function SampleWorkflowPage() {
         <WorkflowTimeline 
           workflowSteps={workflowSteps}
           workOrder={workOrder}
-          sample={sample}
           onStepClick={setSelectedStep}
           onStatusUpdate={updateStepStatus}
           isLoading={isLoading}
@@ -361,7 +275,6 @@ export default function SampleWorkflowPage() {
       {showOTInfo && (
         <WorkOrderInfoModal
           workOrder={workOrder}
-          sample={sample}
           onClose={() => setShowOTInfo(false)}
         />
       )}

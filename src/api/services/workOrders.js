@@ -13,6 +13,10 @@ import apiClient from '../client';
 const transformBackendToFrontend = (backendOrder) => {
   if (!backendOrder) return null;
   
+  // Build full technician name from backend UsuarioBasicDTO
+  const tec = backendOrder.tecnico_asignado || backendOrder.tecnicoAsignado || {};
+  const tecNombre = [tec.nombre, tec.apellido].filter(Boolean).join(' ') || null;
+
   return {
     id: backendOrder.id_orden_trabajo || backendOrder.idOrdenTrabajo,
     ot_number: backendOrder.codigo_ot || backendOrder.codigoOT,
@@ -20,15 +24,17 @@ const transformBackendToFrontend = (backendOrder) => {
     created_date: backendOrder.fecha_creacion || backendOrder.fechaCreacion,
     generated_at: backendOrder.fecha_creacion || backendOrder.fechaCreacion,
     completion_date: backendOrder.fecha_finalizacion || backendOrder.fechaFinalizacion,
-    assigned_technician: backendOrder.tecnico_asignado?.nombre || backendOrder.tecnicoAsignado?.nombre,
-    technician_id: backendOrder.tecnico_asignado?.id_usuario || backendOrder.tecnicoAsignado?.idUsuario,
+    assigned_technician: tecNombre,
+    tecnico_asignado: tec.nombre ? { nombre_completo: tecNombre, email: tec.email } : null,
+    technician_id: tec.id_usuario || tec.idUsuario,
     tasks: backendOrder.tareas || [],
+    tareas: backendOrder.tareas || [],
     total_tasks: backendOrder.total_tareas || backendOrder.totalTareas || 0,
     pending_tasks: backendOrder.tareas_pendientes || backendOrder.tareasPendientes || 0,
     completed_tasks: backendOrder.tareas_completadas || backendOrder.tareasCompletadas || 0,
     sample_count: backendOrder.total_tareas || backendOrder.totalTareas || 0,
     // Compute analysis info from tasks if available
-    test_parameter: backendOrder.tareas?.[0]?.nombre_analisis || backendOrder.tareas?.[0]?.nombreAnalisis || 'Varios análisis',
+    test_parameter: computeAnalysisNames(backendOrder.tareas),
     priority: computePriority(backendOrder.tareas)
   };
 };
@@ -43,6 +49,17 @@ const computePriority = (tasks) => {
   if (priorities.includes('alta') || priorities.includes('critica')) return 'critica';
   if (priorities.includes('media') || priorities.includes('urgente')) return 'urgente';
   return 'normal';
+};
+
+/**
+ * Compute distinct analysis names from tasks
+ */
+const computeAnalysisNames = (tasks) => {
+  if (!tasks || tasks.length === 0) return 'Sin análisis';
+  const names = [...new Set(tasks.map(t => t.nombre_analisis || t.nombreAnalisis).filter(Boolean))];
+  if (names.length === 0) return 'Sin análisis';
+  if (names.length === 1) return names[0];
+  return `${names[0]} (+${names.length - 1} más)`;
 };
 
 export const workOrdersService = {
@@ -144,6 +161,39 @@ export const workOrdersService = {
   getStats: async () => {
     console.warn('⚠️ workOrdersService.getStats is not implemented in backend');
     return {};
+  },
+  /**
+   * Get workflow progress for a work order
+   * GET /api/ordenes/{id}/workflow
+   */
+  getWorkflow: async (id) => {
+    const response = await apiClient.get(`/ordenes/${id}/workflow`);
+    return response.data;
+  },
+
+  /**
+   * Complete the current workflow stage and advance
+   * POST /api/ordenes/{id}/workflow/completar-etapa
+   * @param {UUID} id - Order ID
+   * @param {string|null} notas - Optional notes
+   */
+  completarEtapa: async (id, notas = null) => {
+    const body = notas ? { notas } : {};
+    const response = await apiClient.post(`/ordenes/${id}/workflow/completar-etapa`, body);
+    return response.data;
+  },
+
+  /**
+   * Create a new OT with rejected samples
+   * POST /api/ordenes/{id}/crear-ot-rechazadas
+   */
+  crearOTRechazadas: async (id, { tecnicoAsignadoId = null, notas = null, tareaIds = null } = {}) => {
+    const body = {};
+    if (tecnicoAsignadoId) body.tecnico_asignado_id = tecnicoAsignadoId;
+    if (notas) body.notas = notas;
+    if (tareaIds) body.tarea_ids = tareaIds;
+    const response = await apiClient.post(`/ordenes/${id}/crear-ot-rechazadas`, body);
+    return transformBackendToFrontend(response.data);
   },
 };
 
