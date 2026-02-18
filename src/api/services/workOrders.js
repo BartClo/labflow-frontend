@@ -45,9 +45,8 @@ const transformBackendToFrontend = (backendOrder) => {
 const computePriority = (tasks) => {
   if (!tasks || tasks.length === 0) return 'normal';
   
-  const priorities = tasks.map(t => (t.prioridad || 'MEDIA').toLowerCase());
-  if (priorities.includes('alta') || priorities.includes('critica')) return 'critica';
-  if (priorities.includes('media') || priorities.includes('urgente')) return 'urgente';
+  const priorities = tasks.map(t => (t.prioridad || 'MEDIA').toUpperCase());
+  if (priorities.includes('ALTA')) return 'urgente';
   return 'normal';
 };
 
@@ -194,6 +193,14 @@ export const workOrdersService = {
     if (tareaIds) body.tarea_ids = tareaIds;
     const response = await apiClient.post(`/ordenes/${id}/crear-ot-rechazadas`, body);
     return transformBackendToFrontend(response.data);
+  },
+
+  /**
+   * Get system statistics (active OTs, urgent, in process)
+   */
+  getEstadisticas: async () => {
+    const response = await apiClient.get('/ordenes/estadisticas');
+    return response.data;
   },
 };
 

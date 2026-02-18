@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuth } from "@/context/AuthContext";
+import * as workOrdersService from "@/api/services/workOrders";
 import { 
   LayoutDashboard, 
   Users, 
@@ -49,6 +50,29 @@ export default function Layout({ children, currentPageName }) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [stats, setStats] = useState({ 
+    otActivas: 0, 
+    otUrgentes: 0, 
+    otEnProceso: 0 
+  });
+
+  // Load system statistics
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const estadisticas = await workOrdersService.getEstadisticas();
+        setStats(estadisticas);
+      } catch (error) {
+        console.error("Error cargando estadísticas:", error);
+      }
+    };
+
+    loadStats();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(loadStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Check if user is admin
   const isAdmin = user?.rol?.nombre === "ADMINISTRADOR";
@@ -197,19 +221,19 @@ export default function Layout({ children, currentPageName }) {
                   <div className="flex items-center justify-between text-sm group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:w-full">
                     <span className="text-gray-600 group-data-[collapsible=icon]:hidden">OT Activas</span>
                     <Badge variant="secondary" className="bg-blue-100 text-blue-800" title="OT Activas">
-                      12
+                      {stats.otActivas}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:w-full">
                     <span className="text-gray-600 group-data-[collapsible=icon]:hidden">Urgentes</span>
                     <Badge variant="destructive" className="bg-red-100 text-red-800" title="Urgentes">
-                      3
+                      {stats.otUrgentes}
                     </Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:w-full">
                     <span className="text-gray-600 group-data-[collapsible=icon]:hidden">En Proceso</span>
                     <Badge variant="secondary" className="bg-green-100 text-green-800" title="En Proceso">
-                      8
+                      {stats.otEnProceso}
                     </Badge>
                   </div>
                 </div>
