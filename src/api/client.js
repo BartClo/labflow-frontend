@@ -64,6 +64,10 @@ apiClient.interceptors.response.use(
         case 500:
           console.error('Internal server error:', errorMessage);
           break;
+        case 503:
+          console.error('Backend no disponible. Asegúrate de que el servidor esté corriendo en', import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080');
+          error.serverMessage = 'El servidor backend no está disponible. Por favor inicia el servidor e intenta de nuevo.';
+          break;
         default:
           console.error(`Error ${status}:`, errorMessage);
       }

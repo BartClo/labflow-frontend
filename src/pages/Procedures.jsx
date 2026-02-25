@@ -256,6 +256,8 @@ export default function ProceduresPage() {
               }));
               
               const equipment = Object.values(analysis.equiposRequeridos || {}).filter(eq => eq);
+              const supplies = Object.values(analysis.insumosRequeridos || {}).filter(s => s);
+              const reagents = Object.values(analysis.reactivosRequeridos || {}).filter(r => r);
               
               const formattedAnalysis = {
                 name: analysis.nombreAnalisis,
@@ -266,6 +268,8 @@ export default function ProceduresPage() {
                 sample_types: analysis.tiposMuestraAplicables || [],
                 parameters: parameters.length > 0 ? parameters : [{ parameter_name: '', unit: '', detection_limit: '', max_limit: '' }],
                 required_equipment: equipment.length > 0 ? equipment : [''],
+                required_supplies: supplies.length > 0 ? supplies : [''],
+                required_reagents: reagents.length > 0 ? reagents : [''],
                 estimated_duration_hours: analysis.duracionEstimadaHoras,
                 price: analysis.precioClp,
                 status: analysis.estado?.toLowerCase() === 'activo' ? 'activo' : 'inactivo'

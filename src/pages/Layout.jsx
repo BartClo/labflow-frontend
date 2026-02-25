@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useAuth } from "@/context/AuthContext";
-import * as workOrdersService from "@/api/services/workOrders";
+import { WorkOrder } from "@/api/entities";
 import { 
   LayoutDashboard, 
   Users, 
@@ -56,12 +56,37 @@ export default function Layout({ children, currentPageName }) {
     otEnProceso: 0 
   });
 
-  // Load system statistics
+  // Load system statistics from actual work orders data
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const estadisticas = await workOrdersService.getEstadisticas();
-        setStats(estadisticas);
+        const orders = await WorkOrder.getAll();
+        const ordersList = Array.isArray(orders) ? orders : (orders?.content || []);
+        
+        console.log('📊 Stats - Orders loaded:', ordersList.length, ordersList);
+        
+        // "Activas" = any OT not completed or cancelled
+        const activas = ordersList.filter(o => {
+          const status = (o.status || o.estado || '').toLowerCase();
+          return status !== 'completada' && status !== 'cancelada';
+        }).length;
+        
+        // "Urgentes" = priority is urgente or critica, and not completed/cancelled
+        const urgentes = ordersList.filter(o => {
+          const priority = (o.priority || o.prioridad || '').toLowerCase();
+          const status = (o.status || o.estado || '').toLowerCase();
+          return (priority === 'urgente' || priority === 'critica') &&
+                 status !== 'completada' && status !== 'cancelada';
+        }).length;
+        
+        // "En Proceso" = status is en_proceso
+        const enProceso = ordersList.filter(o => {
+          const status = (o.status || o.estado || '').toLowerCase();
+          return status === 'en_proceso';
+        }).length;
+        
+        console.log('📊 Stats computed:', { activas, urgentes, enProceso });
+        setStats({ otActivas: activas, otUrgentes: urgentes, otEnProceso: enProceso });
       } catch (error) {
         console.error("Error cargando estadísticas:", error);
       }
@@ -129,13 +154,25 @@ export default function Layout({ children, currentPageName }) {
     return (nombre || user.email || 'U').charAt(0).toUpperCase();
   };
 
-  // Get user display name
+  // Get user display name - prioritize nombre/apellido, fallback to username/email
   const getUserDisplayName = () => {
     if (!user) return 'Usuario Lab';
     const nombre = user.nombre || '';
     const apellido = user.apellido || '';
-    if (nombre && apellido) {
+    // If nombre and apellido exist and aren't just the username repeated
+    if (nombre && apellido && !(nombre.toLowerCase() === apellido.toLowerCase() && nombre.toLowerCase() === (user.username || '').toLowerCase())) {
       return `${nombre} ${apellido}`;
+    }
+    if (nombre && nombre.toLowerCase() !== (user.username || '').toLowerCase()) {
+      return nombre;
+    }
+    if (apellido && apellido.toLowerCase() !== (user.username || '').toLowerCase()) {
+      return apellido;
+    }
+    // If nombre/apellido are just the username, show email or formatted username
+    if (user.email && user.email !== user.username) {
+      const emailName = user.email.split('@')[0];
+      return emailName.charAt(0).toUpperCase() + emailName.slice(1);
     }
     return nombre || user.username || user.email || 'Usuario Lab';
   };

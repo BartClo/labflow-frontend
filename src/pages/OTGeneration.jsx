@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
-import { WorkOrder, Analysis, AnalysisTemplate, Task } from "@/api/entities";
-import { useAuth } from "@/context/AuthContext";
+import { Sample, WorkOrder, Analysis, AnalysisTemplate } from "@/api/entities";
+import { administrationService } from "@/api/services/administration";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,14 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { 
   Play,
   RefreshCw,
@@ -25,14 +33,12 @@ import {
   Activity,
   Edit,
   Trash2,
-  X,
-  User
+  X
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import WorkOrderForm from '@/components/workorders/WorkOrderForm';
 
 // Configuration for Work Order status badges
 const statusConfig = {
@@ -50,21 +56,17 @@ const priorityConfig = {
 };
 
 export default function OTGenerationPage() {
-  const { user } = useAuth();
-  const [pendingTasks, setPendingTasks] = useState([]); // Tareas pendientes del backend
-  const [pendingTasksByAnalysis, setPendingTasksByAnalysis] = useState({}); // Conteo por análisis
+  const [pendingSamples, setPendingSamples] = useState([]);
   const [workOrders, setWorkOrders] = useState([]);
   const [analyses, setAnalyses] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [filteredTasks, setFilteredTasks] = useState([]); // Tareas filtradas por análisis
-  const [selectedTasks, setSelectedTasks] = useState([]); // IDs de tareas seleccionadas
+  const [filteredSamples, setFilteredSamples] = useState([]);
+  const [selectedSamples, setSelectedSamples] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectionMode, setSelectionMode] = useState("individual");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createFormValues, setCreateFormValues] = useState(null);
   const [lastGeneration, setLastGeneration] = useState(null);
   const [activeTab, setActiveTab] = useState("list"); // Set initial active tab to 'list'
 
@@ -74,15 +76,19 @@ export default function OTGenerationPage() {
   const loadData = useCallback(async () => {
     try {
       // Cargar datos de forma independiente para que un error no bloquee todo
+      let samples = [];
       let ordersData = [];
       let analysesData = [];
       let templatesData = [];
-      let tasksData = [];
-      let tasksByAnalysisData = {};
+
+      try {
+        samples = await Sample.getAll();
+      } catch (error) {
+        console.error("Error loading samples:", error);
+      }
 
       try {
         ordersData = await WorkOrder.getAll();
-        console.log('📋 Órdenes de trabajo cargadas:', ordersData);
       } catch (error) {
         console.warn("Work orders endpoint not available yet:", error.message);
         ordersData = [];
@@ -91,6 +97,7 @@ export default function OTGenerationPage() {
       try {
         analysesData = await Analysis.getAll();
         console.log('📊 Análisis cargados:', analysesData);
+        console.log('📊 Total análisis:', analysesData?.length);
       } catch (error) {
         console.error("Error loading analyses:", error);
       }
@@ -98,26 +105,14 @@ export default function OTGenerationPage() {
       try {
         templatesData = await AnalysisTemplate.getAll();
         console.log('📦 Plantillas cargadas:', templatesData);
+        console.log('📦 Total plantillas:', templatesData?.length);
       } catch (error) {
         console.error("Error loading templates:", error);
       }
 
-      // Cargar tareas pendientes (sin OT asignada)
-      try {
-        tasksData = await Task.getPendingTasks();
-        console.log('📝 Tareas pendientes cargadas:', tasksData);
-      } catch (error) {
-        console.error("Error loading pending tasks:", error);
-      }
-
-      // Cargar conteo de tareas por análisis
-      try {
-        tasksByAnalysisData = await Task.getPendingTasksByAnalysis();
-        console.log('📊 Tareas por análisis:', tasksByAnalysisData);
-      } catch (error) {
-        console.error("Error loading tasks by analysis:", error);
-      }
-
+      // Filtrar muestras con estado 'recibida' en el frontend
+      const receivedSamples = Array.isArray(samples) ? samples.filter(s => s.status === 'recibida') : [];
+      
       // Ordenar las órdenes por fecha de creación (más recientes primero) en el frontend
       const sortedOrders = Array.isArray(ordersData) ? 
         [...ordersData].sort((a, b) => {
@@ -154,10 +149,9 @@ export default function OTGenerationPage() {
       
       console.log('✅ Análisis transformados:', transformedAnalyses.length);
       console.log('✅ Plantillas transformadas:', transformedTemplates.length);
-      console.log('✅ Tareas pendientes:', tasksData.length);
+      console.log('🔍 Primera plantilla transformada:', transformedTemplates[0]);
       
-      setPendingTasks(tasksData);
-      setPendingTasksByAnalysis(tasksByAnalysisData);
+      setPendingSamples(receivedSamples);
       setWorkOrders(sortedOrders);
       setAnalyses(transformedAnalyses);
       setTemplates(transformedTemplates);
@@ -170,64 +164,48 @@ export default function OTGenerationPage() {
     loadData();
   }, [loadData]);
 
-  // Función para ordenar tareas por prioridad y fecha
-  const sortTasksByPriorityAndDate = (tasks) => {
-    const priorityOrder = { 'alta': 0, 'critica': 0, 'media': 1, 'urgente': 1, 'baja': 2, 'normal': 2 };
-    
-    return [...tasks].sort((a, b) => {
-      // Primero ordenar por prioridad (alta/crítica > media/urgente > baja/normal)
-      const priorityA = priorityOrder[a.priority?.toLowerCase()] ?? 2;
-      const priorityB = priorityOrder[b.priority?.toLowerCase()] ?? 2;
-      
-      if (priorityA !== priorityB) {
-        return priorityA - priorityB;
-      }
-      
-      // Si tienen la misma prioridad, ordenar por fecha (más antiguas primero)
-      const dateA = new Date(a.date_added || 0);
-      const dateB = new Date(b.date_added || 0);
-      return dateA - dateB;
-    });
-  };
-
-  // Filtrar tareas cuando se selecciona un análisis
+  // Filtrar muestras cuando se selecciona un análisis o plantilla
   useEffect(() => {
     if (selectionMode === "individual" && selectedAnalysis) {
-      console.log('🔍 Buscando tareas para análisis:', selectedAnalysis.name, 'ID:', selectedAnalysis.id);
-      console.log('🔍 Total tareas pendientes:', pendingTasks.length);
+      console.log('🔍 Buscando muestras para análisis:', selectedAnalysis.name);
+      console.log('🔍 Muestras pendientes:', pendingSamples.length);
+      console.log('🔍 Primera muestra requested_tests:', pendingSamples[0]?.requested_tests);
       
-      // Filtrar tareas que corresponden al análisis seleccionado
-      const tasksForAnalysis = pendingTasks.filter(task => 
-        task.analysis_name === selectedAnalysis.name ||
-        task.analysis_code === selectedAnalysis.code ||
-        task.analysis_name?.toLowerCase() === selectedAnalysis.name?.toLowerCase()
+      const samplesForAnalysis = pendingSamples.filter(sample => 
+        sample.requested_tests && 
+        Array.isArray(sample.requested_tests) &&
+        sample.requested_tests.includes(selectedAnalysis.name)
       );
-      
-      // Ordenar por prioridad y fecha
-      const sortedTasks = sortTasksByPriorityAndDate(tasksForAnalysis);
-      
-      console.log('✅ Tareas encontradas para análisis:', sortedTasks.length);
-      console.log('📊 Tareas ordenadas:', sortedTasks.map(t => ({
-        id: t.id, 
-        sample: t.sample_number,
-        priority: t.priority, 
-        date: t.date_added
-      })));
-      
-      setFilteredTasks(sortedTasks);
-      setSelectedTasks([]);
+      console.log('✅ Muestras encontradas para análisis:', samplesForAnalysis.length);
+      setFilteredSamples(samplesForAnalysis);
+      setSelectedSamples([]);
     } else if (selectionMode === "template" && selectedTemplate) {
       console.log('🔍 Plantilla seleccionada:', selectedTemplate);
-      // Para plantillas, por ahora mostrar todas las tareas pendientes
-      // TODO: Filtrar por los análisis de la plantilla
-      const sortedTasks = sortTasksByPriorityAndDate(pendingTasks);
-      setFilteredTasks(sortedTasks);
-      setSelectedTasks([]);
+      console.log('🔍 analysis_ids de plantilla:', selectedTemplate.analysis_ids);
+      console.log('🔍 Todos los análisis disponibles:', analyses.length);
+      
+      const templateAnalysisNames = analyses
+        .filter(a => selectedTemplate.analysis_ids?.includes(a.id))
+        .map(a => a.name);
+      
+      console.log('🔍 Nombres de análisis en plantilla:', templateAnalysisNames);
+      console.log('🔍 Primera muestra requested_tests:', pendingSamples[0]?.requested_tests);
+      
+      const samplesForTemplate = pendingSamples.filter(sample => 
+        sample.requested_tests && 
+        Array.isArray(sample.requested_tests) &&
+        templateAnalysisNames.every(analysisName => 
+          sample.requested_tests.includes(analysisName)
+        )
+      );
+      console.log('✅ Muestras encontradas para plantilla:', samplesForTemplate.length);
+      setFilteredSamples(samplesForTemplate);
+      setSelectedSamples([]);
     } else {
-      setFilteredTasks([]);
-      setSelectedTasks([]);
+      setFilteredSamples([]);
+      setSelectedSamples([]);
     }
-  }, [selectedAnalysis, selectedTemplate, pendingTasks, selectionMode]);
+  }, [selectedAnalysis, selectedTemplate, pendingSamples, selectionMode, analyses]);
 
   const handleAnalysisSelect = (analysis) => {
     setSelectedAnalysis(analysis);
@@ -239,80 +217,80 @@ export default function OTGenerationPage() {
     setSelectedAnalysis(null);
   };
 
-  const handleTaskToggle = (taskId) => {
-    setSelectedTasks(prev => 
-      prev.includes(taskId)
-        ? prev.filter(id => id !== taskId)
-        : [...prev, taskId]
+  const handleSampleToggle = (sampleId) => {
+    setSelectedSamples(prev => 
+      prev.includes(sampleId)
+        ? prev.filter(id => id !== sampleId)
+        : [...prev, sampleId]
     );
   };
 
-  const handleSelectAllTasks = () => {
-    if (selectedTasks.length === filteredTasks.length) {
-      setSelectedTasks([]);
+  const handleSelectAll = () => {
+    if (selectedSamples.length === filteredSamples.length) {
+      setSelectedSamples([]);
     } else {
-      setSelectedTasks(filteredTasks.map(t => t.id));
+      setSelectedSamples(filteredSamples.map(s => s.id));
     }
   };
 
   const generateWorkOrder = async () => {
-    if (selectedTasks.length === 0) {
-      alert('Por favor selecciona al menos una tarea');
-      return;
-    }
-
-    // Open create modal to request required fields before generating
-    setShowCreateModal(true);
-  };
-
-  const handleCreateWorkOrder = async (formData) => {
-    // formData comes from WorkOrderForm: includes assigned_technician (UUID), status, priority
+    if (selectedSamples.length === 0) return;
+    
     setIsGenerating(true);
     try {
-      // Use the technician selected in the form; fall back to current user
-      const tecnicoId = formData.assigned_technician || user?.id;
-      if (!tecnicoId) {
-        alert('No se pudo identificar el técnico. Por favor, selecciona uno o inicia sesión nuevamente.');
-        setIsGenerating(false);
-        return;
+      const samples = filteredSamples.filter(s => selectedSamples.includes(s.id));
+      
+      let otData;
+      if (selectionMode === "individual" && selectedAnalysis) {
+        const otNumber = `OT-${Date.now().toString().slice(-6)}-${selectedAnalysis.code || 'AN'}`;
+        
+        otData = {
+          ot_number: otNumber,
+          analysis_type: selectedAnalysis.name,
+          sample_ids: samples.map(s => s.id),
+          sample_numbers: samples.map(s => s.internal_number).join(', '),
+          sample_count: samples.length,
+          test_parameter: selectedAnalysis.name,
+          test_method: selectedAnalysis.method,
+          status: "generada",
+          priority: samples.some(s => s.priority === 'critica') ? 'critica' : 
+                    samples.some(s => s.priority === 'urgente') ? 'urgente' : 'normal',
+          generated_at: new Date().toISOString(),
+          equipment_used: selectedAnalysis.required_equipment?.join('; ') || ''
+        };
+      } else if (selectionMode === "template" && selectedTemplate) {
+        const otNumber = `OT-${Date.now().toString().slice(-6)}-TPL`;
+        
+        otData = {
+          ot_number: otNumber,
+          analysis_type: selectedTemplate.name,
+          sample_ids: samples.map(s => s.id),
+          sample_numbers: samples.map(s => s.internal_number).join(', '),
+          sample_count: samples.length,
+          test_parameter: selectedTemplate.name,
+          test_method: `Plantilla: ${selectedTemplate.name}`,
+          status: "generada",
+          priority: samples.some(s => s.priority === 'critica') ? 'critica' : 
+                    samples.some(s => s.priority === 'urgente') ? 'urgente' : 'normal',
+          generated_at: new Date().toISOString()
+        };
       }
-
-      const otData = {
-        tarea_ids: selectedTasks,
-        tecnico_asignado_id: tecnicoId
-      };
-
-      console.log('📤 Enviando datos al backend:', otData);
-      const createdOrder = await WorkOrder.create(otData);
-
-      // Merge front-end form values into the returned order for immediate UI feedback
-      const merged = {
-        ...createdOrder,
-        status: formData.status || createdOrder.status,
-        priority: formData.priority || createdOrder.priority,
-        sample_numbers: selectedTasks.map(id => {
-          const t = pendingTasks.find(pt => pt.id === id);
-          return t ? (t.sample_number || t.numero_muestra || '') : '';
-        }).filter(Boolean).join(', '),
-        sample_count: selectedTasks.length
-      };
-
-      // Update local list optimistically
-      setWorkOrders(prev => [merged, ...(prev || [])]);
-
+      
+      await WorkOrder.create(otData);
+      
+      const updatePromises = samples.map(sample => 
+        Sample.update(sample.id, { status: 'en_preparacion' })
+      );
+      await Promise.all(updatePromises);
+      
       setLastGeneration(new Date());
-      setSelectedTasks([]);
+      setSelectedSamples([]);
       setSelectedAnalysis(null);
       setSelectedTemplate(null);
-      setActiveTab('list');
-      setShowCreateModal(false);
-      setCreateFormValues(null);
-      // Optionally refresh from backend
-      try { loadData(); } catch(e){ /* ignore */ }
+      setActiveTab("list");
+      loadData();
     } catch (error) {
-      console.error('Error generating work order:', error);
-      const errorMsg = error.serverMessage || error.response?.data?.message || error.message || 'Error desconocido';
-      alert(`Error al generar la OT: ${errorMsg}`);
+      console.error("Error generating work order:", error);
     }
     setIsGenerating(false);
   };
@@ -325,19 +303,10 @@ export default function OTGenerationPage() {
   const handleUpdateWorkOrder = async (updatedData) => {
     if (!editingWorkOrder) return;
     try {
-      // Try to update status in backend if available
-      if (updatedData.status) {
-        try {
-          await WorkOrder.updateStatus(editingWorkOrder.id, updatedData.status);
-        } catch (e) {
-          console.warn('Backend does not support updateStatus or failed:', e);
-        }
-      }
-
-      // Optimistically update local list for fields that backend may not persist
-      setWorkOrders(prev => prev.map(wo => wo.id === editingWorkOrder.id ? { ...wo, ...updatedData } : wo));
+      await WorkOrder.update(editingWorkOrder.id, updatedData);
       setShowEditModal(false);
       setEditingWorkOrder(null);
+      loadData(); // Refresh the list
     } catch (error) {
       console.error("Error updating work order:", error);
     }
@@ -431,14 +400,12 @@ export default function OTGenerationPage() {
                               <h3 className="text-lg font-semibold text-gray-900">
                                 {order.ot_number}
                               </h3>
-                              <Badge className={`${statusInfo.color} border`}>
+                              <Badge className={`${priorityInfo.color} border`}>
+                                {priorityInfo.label}
+                              </Badge>
+                              <Badge variant="outline" className={`${statusInfo.color} border text-xs`}>
                                 {statusInfo.label}
                               </Badge>
-                              {order.priority !== 'normal' && (
-                                <Badge className={`${priorityInfo.color} border`}>
-                                  {priorityInfo.label}
-                                </Badge>
-                              )}
                             </div>
                             
                             <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
@@ -457,12 +424,6 @@ export default function OTGenerationPage() {
                                   </span>
                                 </div>
                               )}
-                              {order.assigned_technician && (
-                                <div className="flex items-center gap-1">
-                                  <User className="w-4 h-4" />
-                                  <span>{order.assigned_technician}</span>
-                                </div>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -471,11 +432,9 @@ export default function OTGenerationPage() {
                           <Button variant="outline" size="icon" onClick={() => handleEditWorkOrder(order)}>
                             <Edit className="w-4 h-4" />
                           </Button>
-                          {currentStatus !== 'finalizada' && currentStatus !== 'completada' && (
-                            <Button variant="destructive" size="icon" onClick={() => handleDeleteWorkOrder(order.id)}>
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
+                          <Button variant="destructive" size="icon" onClick={() => handleDeleteWorkOrder(order.id)}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                           <Link to={`${createPageUrl("SampleWorkflow")}?otId=${order.id}`}>
                             <Button className="bg-blue-600 hover:bg-blue-700">
                               <Activity className="w-4 h-4 mr-2" />
@@ -498,8 +457,8 @@ export default function OTGenerationPage() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Tareas Pendientes</p>
-                    <p className="text-3xl font-bold text-gray-900">{pendingTasks.length}</p>
+                    <p className="text-sm text-gray-600">Muestras Pendientes</p>
+                    <p className="text-3xl font-bold text-gray-900">{pendingSamples.length}</p>
                   </div>
                   <FlaskConical className="w-10 h-10 text-blue-600" />
                 </div>
@@ -569,17 +528,9 @@ export default function OTGenerationPage() {
                       </div>
                     ) : (
                       filteredAnalyses.map((analysis) => {
-                        // Contar tareas pendientes para este análisis
-                        const tasksCount = pendingTasks.filter(t => 
-                          t.analysis_name === analysis.name ||
-                          t.analysis_code === analysis.code ||
-                          t.analysis_name?.toLowerCase() === analysis.name?.toLowerCase()
+                        const samplesCount = pendingSamples.filter(s => 
+                          s.requested_tests?.includes(analysis.name)
                         ).length;
-                        
-                        // También usar el conteo del backend si está disponible
-                        const backendCount = pendingTasksByAnalysis[analysis.name] || 0;
-                        const displayCount = tasksCount || backendCount;
-                        
                         const isSelected = selectedAnalysis?.id === analysis.id;
                         
                         return (
@@ -599,8 +550,8 @@ export default function OTGenerationPage() {
                                   </div>
                                   <p className="text-sm text-gray-600 mb-2">{analysis.method}</p>
                                   <div className="flex items-center gap-2">
-                                    <Badge className={displayCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                      {displayCount} tarea{displayCount !== 1 ? 's' : ''} pendiente{displayCount !== 1 ? 's' : ''}
+                                    <Badge className={samplesCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                      {samplesCount} muestras
                                     </Badge>
                                   </div>
                                 </div>
@@ -623,14 +574,13 @@ export default function OTGenerationPage() {
                       </div>
                     ) : (
                       filteredTemplatesList.map((template) => {
-                        // Obtener los análisis de la plantilla
-                        const templateAnalyses = analyses.filter(a => template.analysis_ids?.includes(a.id));
+                        const templateAnalysisNames = analyses
+                          .filter(a => template.analysis_ids?.includes(a.id))
+                          .map(a => a.name);
                         
-                        // Contar tareas pendientes que coinciden con los análisis de la plantilla
-                        const tasksCount = pendingTasks.filter(task => 
-                          templateAnalyses.some(analysis => 
-                            task.nombre_analisis === analysis.name || task.id_analisis === analysis.id
-                          )
+                        const samplesCount = pendingSamples.filter(sample => 
+                          sample.requested_tests && 
+                          templateAnalysisNames.every(name => sample.requested_tests.includes(name))
                         ).length;
                         
                         const isSelected = selectedTemplate?.id === template.id;
@@ -654,8 +604,8 @@ export default function OTGenerationPage() {
                                     <Badge variant="outline" className="text-xs">
                                       {template.analysis_ids?.length || 0} análisis
                                     </Badge>
-                                    <Badge className={tasksCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                                      {tasksCount} {tasksCount === 1 ? 'tarea' : 'tareas'}
+                                    <Badge className={samplesCount > 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                                      {samplesCount} muestras
                                     </Badge>
                                   </div>
                                 </div>
@@ -675,10 +625,10 @@ export default function OTGenerationPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>2. Selecciona Tareas para la OT</CardTitle>
-                {filteredTasks.length > 0 && (
-                  <Button variant="outline" size="sm" onClick={handleSelectAllTasks}>
-                    {selectedTasks.length === filteredTasks.length ? 'Deseleccionar' : 'Seleccionar'} Todas
+                <CardTitle>2. Selecciona Muestras</CardTitle>
+                {filteredSamples.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={handleSelectAll}>
+                    {selectedSamples.length === filteredSamples.length ? 'Deseleccionar' : 'Seleccionar'} Todas
                   </Button>
                 )}
               </CardHeader>
@@ -690,76 +640,52 @@ export default function OTGenerationPage() {
                       Selecciona un análisis o plantilla
                     </h3>
                     <p className="text-gray-600">
-                      Primero debes seleccionar un análisis o plantilla para ver las tareas pendientes
+                      Primero debes seleccionar un análisis o plantilla para ver las muestras compatibles
                     </p>
                   </div>
-                ) : filteredTasks.length === 0 ? (
+                ) : filteredSamples.length === 0 ? (
                   <div className="text-center py-12">
                     <AlertCircle className="w-16 h-16 mx-auto mb-4 text-gray-400" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      No hay tareas pendientes
+                      No hay muestras pendientes
                     </h3>
                     <p className="text-gray-600">
-                      No hay tareas pendientes para {selectionMode === 'individual' ? 'este análisis' : 'esta plantilla'}
+                      No hay muestras que requieran {selectionMode === 'individual' ? 'este análisis' : 'esta plantilla'}
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-3 max-h-[500px] overflow-y-auto">
-                    {/* Indicador de ordenamiento */}
-                    <div className="text-xs text-gray-500 px-2 py-1 bg-gray-50 rounded flex items-center gap-2">
-                      <Clock className="w-3 h-3" />
-                      <span>Ordenado por: Prioridad (alta → media → baja) y Fecha (más antigua primero)</span>
-                    </div>
-                    
-                    {filteredTasks.map((task, index) => (
+                    {filteredSamples.map((sample) => (
                       <Card
-                        key={task.id}
+                        key={sample.id}
                         className={`cursor-pointer transition-all hover:shadow-md ${
-                          selectedTasks.includes(task.id) ? 'border-2 border-blue-500 bg-blue-50' : 'border'
-                        } ${task.priority === 'alta' ? 'border-l-4 border-l-red-500' : 
-                            task.priority === 'media' ? 'border-l-4 border-l-orange-500' : ''}`}
-                        onClick={() => handleTaskToggle(task.id)}
+                          selectedSamples.includes(sample.id) ? 'border-2 border-blue-500 bg-blue-50' : 'border'
+                        }`}
+                        onClick={() => handleSampleToggle(sample.id)}
                       >
                         <CardContent className="p-4">
                           <div className="flex items-center gap-3">
                             <Checkbox
-                              checked={selectedTasks.includes(task.id)}
-                              onCheckedChange={() => handleTaskToggle(task.id)}
+                              checked={selectedSamples.includes(sample.id)}
+                              onCheckedChange={() => handleSampleToggle(sample.id)}
                             />
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="text-xs text-gray-400">#{index + 1}</span>
-                                <span className="font-semibold text-gray-900">{task.sample_number}</span>
-                                {task.priority === 'alta' && (
-                                  <Badge className="bg-red-100 text-red-800 border border-red-300">
-                                    🔴 Alta
-                                  </Badge>
-                                )}
-                                {task.priority === 'media' && (
-                                  <Badge className="bg-orange-100 text-orange-800 border border-orange-300">
-                                    🟠 Media
-                                  </Badge>
-                                )}
-                                {task.priority === 'baja' && (
-                                  <Badge className="bg-gray-100 text-gray-600">
-                                    Baja
+                                <span className="font-semibold text-gray-900">{sample.internal_number}</span>
+                                {sample.priority !== 'normal' && (
+                                  <Badge className={
+                                    sample.priority === 'critica' ? 'bg-red-100 text-red-800' : 'bg-orange-100 text-orange-800'
+                                  }>
+                                    {sample.priority}
                                   </Badge>
                                 )}
                               </div>
                               <div className="text-sm text-gray-600 space-y-1">
-                                <p><span className="text-gray-500">Análisis:</span> {task.analysis_name}</p>
-                                {task.client && (
-                                  <p><span className="text-gray-500">Cliente:</span> {task.client.name}</p>
-                                )}
-                                {task.barcode && (
-                                  <p><span className="text-gray-500">Código:</span> <span className="font-mono text-xs">{task.barcode}</span></p>
-                                )}
-                                {task.date_added && (
-                                  <div className="flex items-center gap-1 text-xs text-gray-500">
-                                    <Calendar className="w-3 h-3" />
-                                    <span>Agregado: {format(new Date(task.date_added), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}</span>
-                                  </div>
-                                )}
+                                <p>Cliente: {sample.client_name}</p>
+                                <p>Tipo: {sample.sample_type}</p>
+                                <p className="text-xs">
+                                  {format(new Date(sample.reception_date), 'dd/MM/yyyy HH:mm', { locale: es })}
+                                </p>
                               </div>
                             </div>
                           </div>
@@ -772,7 +698,7 @@ export default function OTGenerationPage() {
             </Card>
           </div>
 
-          {selectedTasks.length > 0 && (
+          {selectedSamples.length > 0 && (
             <Card className="bg-gradient-to-r from-blue-50 to-green-50 border-blue-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -781,12 +707,8 @@ export default function OTGenerationPage() {
                       OT Lista para Generar
                     </h3>
                     <p className="text-sm text-gray-600">
-                      {selectedTasks.length} tarea{selectedTasks.length !== 1 ? 's' : ''} seleccionada{selectedTasks.length !== 1 ? 's' : ''} para{' '}
+                      {selectedSamples.length} muestra{selectedSamples.length !== 1 ? 's' : ''} seleccionada{selectedSamples.length !== 1 ? 's' : ''} para{' '}
                       {selectionMode === 'individual' ? selectedAnalysis?.name : selectedTemplate?.name}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                      <User className="w-3 h-3" />
-                      Técnico asignado: {user?.nombre || user?.email || 'Usuario actual'}
                     </p>
                   </div>
                   <Button 
@@ -815,130 +737,161 @@ export default function OTGenerationPage() {
       </Tabs>
 
       {/* Modal de edición de OT */}
-      {showEditModal && editingWorkOrder && (
-        <WorkOrderEditModal
-          workOrder={editingWorkOrder}
-          onSave={handleUpdateWorkOrder}
-          onCancel={() => {
-            setShowEditModal(false);
-            setEditingWorkOrder(null);
-          }}
-        />
-      )}
-      {/* Modal de creación de OT: pedir datos antes de generar */}
-      {showCreateModal && (
-        <WorkOrderForm
-          order={null}
-          samples={pendingTasks.map(t => ({ id: t.id, internal_number: t.sample_number || t.numero_muestra, client_name: t.client?.name || '' }))}
-          analyses={analyses}
-          onSubmit={(formData) => handleCreateWorkOrder(formData)}
-          onCancel={() => { setShowCreateModal(false); setCreateFormValues(null); }}
-        />
-      )}
+      <WorkOrderEditModal
+        open={showEditModal}
+        workOrder={editingWorkOrder}
+        onSave={handleUpdateWorkOrder}
+        onCancel={() => {
+          setShowEditModal(false);
+          setEditingWorkOrder(null);
+        }}
+      />
     </div>
   );
 }
 
-// Componente modal para editar OT completo
-function WorkOrderEditModal({ workOrder, onSave, onCancel }) {
+// Componente modal para editar OT - usando Dialog de shadcn/ui
+function WorkOrderEditModal({ open, workOrder, onSave, onCancel }) {
   const [formData, setFormData] = useState({
-    analysis_type: workOrder.analysis_type || '',
-    test_parameter: workOrder.test_parameter || '',
-    test_method: workOrder.test_method || '',
-    assigned_technician: workOrder.assigned_technician || '',
-    equipment_used: workOrder.equipment_used || '',
-    status: workOrder.status || 'generada',
-    priority: workOrder.priority || 'normal'
+    analysis_type: '',
+    test_parameter: '',
+    assigned_technician: '',
+    equipment_used: '',
+    status: 'generada',
+    priority: 'normal'
   });
+  const [technicians, setTechnicians] = useState([]);
+
+  useEffect(() => {
+    if (workOrder) {
+      setFormData({
+        analysis_type: workOrder.analysis_type || '',
+        test_parameter: workOrder.test_parameter || '',
+        assigned_technician: workOrder.assigned_technician || '',
+        equipment_used: workOrder.equipment_used || '',
+        status: workOrder.status || 'generada',
+        priority: workOrder.priority || 'normal'
+      });
+    }
+  }, [workOrder]);
+
+  // Load technicians (non-admin users) for the assignment dropdown
+  useEffect(() => {
+    const loadTechnicians = async () => {
+      try {
+        const users = await administrationService.getActiveUsers();
+        const nonAdminUsers = (Array.isArray(users) ? users : []).filter(u => {
+          const rolName = (u.rol?.nombre || u.rol?.name || u.rol || '').toUpperCase();
+          return rolName !== 'ADMINISTRADOR' && rolName !== 'ADMIN';
+        });
+        setTechnicians(nonAdminUsers);
+      } catch (error) {
+        console.error('Error loading technicians:', error);
+        // Fallback: try with getAllUsers
+        try {
+          const allUsers = await administrationService.getAllUsers();
+          const nonAdminUsers = (Array.isArray(allUsers) ? allUsers : []).filter(u => {
+            const rolName = (u.rol?.nombre || u.rol?.name || u.rol || '').toUpperCase();
+            return rolName !== 'ADMINISTRADOR' && rolName !== 'ADMIN' && u.activo !== false;
+          });
+          setTechnicians(nonAdminUsers);
+        } catch (fallbackError) {
+          console.error('Error loading users fallback:', fallbackError);
+        }
+      }
+    };
+    if (open) loadTechnicians();
+  }, [open]);
+
+  if (!workOrder) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSave(formData);
   };
 
+  const currentStatusInfo = statusConfig[formData.status] || statusConfig.generada;
+  const currentPriorityInfo = priorityConfig[formData.priority] || priorityConfig.normal;
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <Card className="w-full max-w-2xl my-8">
-        <CardHeader className="flex flex-row items-center justify-between border-b">
-          <div>
-            <CardTitle className="text-xl">Editar Orden de Trabajo</CardTitle>
-            <p className="text-sm text-gray-600 mt-1">OT: {workOrder.ot_number}</p>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl">Editar Orden de Trabajo</DialogTitle>
+          <DialogDescription>OT: {workOrder.ot_number}</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Información de solo lectura */}
+          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+            <h4 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Información de la OT</h4>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500 text-xs">Número de OT</span>
+                <p className="font-medium text-gray-900">{workOrder.ot_number}</p>
+              </div>
+              <div>
+                <span className="text-gray-500 text-xs">Fecha de generación</span>
+                <p className="font-medium text-gray-900">
+                  {workOrder.generated_at ? format(new Date(workOrder.generated_at), 'dd/MM/yyyy HH:mm', { locale: es }) : 'N/A'}
+                </p>
+              </div>
+            </div>
+
+            {/* Muestras asociadas */}
+            <div>
+              <span className="text-gray-500 text-xs">Muestras asociadas</span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {workOrder.sample_numbers ? 
+                  workOrder.sample_numbers.split(',').map((num, i) => (
+                    <Badge key={i} variant="outline" className="text-xs bg-white">
+                      {num.trim()}
+                    </Badge>
+                  )) : (
+                    <span className="text-sm text-gray-600">{workOrder.sample_count || 0} muestra(s)</span>
+                  )
+                }
+              </div>
+            </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onCancel}>
-            <X className="w-4 h-4" />
-          </Button>
-        </CardHeader>
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Información de solo lectura */}
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-              <h4 className="font-semibold text-gray-900 mb-2">Información de la OT</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-600">Número de OT:</span>
-                  <p className="font-medium text-gray-900">{workOrder.ot_number}</p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Muestras:</span>
-                  <p className="font-medium text-gray-900">{workOrder.sample_numbers}</p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Cantidad de muestras:</span>
-                  <p className="font-medium text-gray-900">{workOrder.sample_count}</p>
-                </div>
-                <div>
-                  <span className="text-gray-600">Generada:</span>
-                  <p className="font-medium text-gray-900">
-                    {workOrder.generated_at ? format(new Date(workOrder.generated_at), 'dd/MM/yyyy HH:mm', { locale: es }) : 'N/A'}
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            {/* Campos editables */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="analysis_type">Tipo de Análisis *</Label>
-                <Input
-                  id="analysis_type"
-                  value={formData.analysis_type}
-                  onChange={(e) => setFormData({...formData, analysis_type: e.target.value})}
-                  placeholder="Ej: Análisis Microbiológico"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="test_parameter">Parámetro a Ensayar *</Label>
-                <Input
-                  id="test_parameter"
-                  value={formData.test_parameter}
-                  onChange={(e) => setFormData({...formData, test_parameter: e.target.value})}
-                  placeholder="Ej: Coliformes Totales"
-                  required
-                />
-              </div>
-            </div>
-
+          {/* Campos editables */}
+          <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="test_method">Método de Ensayo *</Label>
+              <Label htmlFor="analysis_type">Tipo de Análisis *</Label>
               <Input
-                id="test_method"
-                value={formData.test_method}
-                onChange={(e) => setFormData({...formData, test_method: e.target.value})}
-                placeholder="Ej: NCh 409/1, APHA 3120"
+                id="analysis_type"
+                value={formData.analysis_type}
+                onChange={(e) => setFormData({...formData, analysis_type: e.target.value})}
+                placeholder="Ej: Análisis Microbiológico"
                 required
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="assigned_technician">Técnico Asignado</Label>
-              <Input
-                id="assigned_technician"
+              <Select
                 value={formData.assigned_technician}
-                onChange={(e) => setFormData({...formData, assigned_technician: e.target.value})}
-                placeholder="Nombre del técnico responsable"
-              />
+                onValueChange={(value) => setFormData({...formData, assigned_technician: value})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar técnico..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {technicians.map((tech) => {
+                    const fullName = [tech.nombre, tech.apellido].filter(Boolean).join(' ') || tech.username || tech.email;
+                    const rolLabel = tech.rol?.nombre || tech.rol?.name || '';
+                    return (
+                      <SelectItem key={tech.id} value={fullName}>
+                        {fullName}{rolLabel ? ` (${rolLabel})` : ''}
+                      </SelectItem>
+                    );
+                  })}
+                  {technicians.length === 0 && (
+                    <SelectItem value="_none" disabled>No hay técnicos disponibles</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -948,11 +901,11 @@ function WorkOrderEditModal({ workOrder, onSave, onCancel }) {
                 value={formData.equipment_used}
                 onChange={(e) => setFormData({...formData, equipment_used: e.target.value})}
                 placeholder="Ej: Espectrofotómetro, Autoclave, etc."
-                className="h-20"
+                className="h-20 resize-none"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="status">Estado *</Label>
                 <Select 
@@ -988,18 +941,18 @@ function WorkOrderEditModal({ workOrder, onSave, onCancel }) {
                 </Select>
               </div>
             </div>
+          </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={onCancel}>
-                Cancelar
-              </Button>
-              <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                Guardar Cambios
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+          <DialogFooter className="pt-4 border-t gap-2">
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Cancelar
+            </Button>
+            <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+              Guardar Cambios
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
