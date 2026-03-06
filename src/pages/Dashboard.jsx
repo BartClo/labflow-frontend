@@ -33,7 +33,8 @@ export default function Dashboard() {
     workOrders: 0
   });
   const [recentSamples, setRecentSamples] = useState([]);
-  const [allSamples, setAllSamples] = useState([]);  // Add this to track all samples
+  const [allSamples, setAllSamples] = useState([]);
+  const [allWorkOrders, setAllWorkOrders] = useState([]);
   const [urgentOrders, setUrgentOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -59,7 +60,7 @@ export default function Dashboard() {
       try {
         quotesData = await Quote.getAll ? await Quote.getAll() : [];
       } catch (quoteError) {
-        console.error('Error loading quotes:', quoteError);
+        // Backend does not have /quotes endpoint yet — silently default to 0
         quotesData = [];
       }
       
@@ -87,7 +88,7 @@ export default function Dashboard() {
       console.log('  - Quotes:', quotesArray.length);
       console.log('  - Samples:', samplesArray.length);
       console.log('  - Work Orders:', workOrdersArray.length);
-      console.log('  - Sample statuses:', samplesArray.map(s => s.status));
+      console.log('  - OT statuses:', workOrdersArray.map(o => ({ id: o.ot_number, status: o.status, has_rejected: o.has_rejected, rejected_tasks: o.rejected_tasks })));
       
       setStats({
         clients: clientsArray.length,
@@ -103,7 +104,8 @@ export default function Dashboard() {
         return dateB - dateA;
       });
       
-      setAllSamples(samplesArray);  // Store all samples for workflow stats
+      setAllSamples(samplesArray);
+      setAllWorkOrders(workOrdersArray);
       setRecentSamples(sortedSamples.slice(0, 10));
       setUrgentOrders(workOrdersArray.filter(wo => wo.priority === 'urgente' || wo.priority === 'critica'));
     } catch (error) {
@@ -114,22 +116,30 @@ export default function Dashboard() {
 
   const getWorkflowStats = () => {
     const statusCounts = {
-      recibida: 0,
+      generada: 0,
       en_preparacion: 0,
       en_analisis: 0,
       completada: 0
     };
-    
-    // Use all samples for accurate workflow stats, not just recent ones
-    allSamples.forEach(sample => {
-      if (sample.status && statusCounts.hasOwnProperty(sample.status)) {
-        statusCounts[sample.status]++;
-      } else if (sample.status === 'en_proceso') {
-        // Map en_proceso to en_preparacion for compatibility
-        statusCounts['en_preparacion']++;
+
+    // Count OTs by their workflow stage
+    allWorkOrders.forEach(order => {
+      const status = (order.status || '').toLowerCase();
+
+      if (status === 'completada' || status === 'finalizada') {
+        statusCounts.completada++;
+      } else if (status === 'en_proceso' || status === 'en_analisis' || status === 'en_progreso') {
+        // 3rd module onward = En Análisis
+        statusCounts.en_analisis++;
+      } else if (status === 'en_preparacion') {
+        // 2nd module = En Preparación
+        statusCounts.en_preparacion++;
+      } else if (status !== 'cancelada') {
+        // generada, abierta, or any other newly-created OT = Generadas (1st module)
+        statusCounts.generada++;
       }
     });
-    
+
     return statusCounts;
   };
 

@@ -227,14 +227,20 @@ const transformBackendToFrontend = (backendSample) => {
     received_by: backendSample.responsableMuestreo || backendSample.responsable_muestreo,
     sample_condition: backendSample.condicionMuestra || backendSample.condicion_muestra || 'aceptable',
     requested_tests: Array.isArray(backendSample.analisis) ? 
-      backendSample.analisis.map(analisis => analisis.id_analisis || analisis.id) : 
+      backendSample.analisis.map(analisis => analisis.idAnalisis || analisis.id_analisis || analisis.id) : 
       (backendSample.analisisIds || backendSample.analisis_ids || []),
     analysis_details: Array.isArray(backendSample.analisis) ? 
-      backendSample.analisis.map(analisis => ({
-        id: analisis.id_analisis || analisis.id,
-        name: analisis.nombre_analisis || analisis.nombre,
-        status: analisis.estado_analisis || analisis.estado
-      })) : [],
+      backendSample.analisis.map(analisis => {
+        const tareaId = analisis.idMuestraAnalisis || analisis.id_muestra_analisis 
+                     || analisis.idTarea || analisis.id_tarea 
+                     || analisis.id;
+        return {
+          tarea_id: tareaId,
+          id:       analisis.idAnalisis || analisis.id_analisis || analisis.id,
+          name:     analisis.nombreAnalisis || analisis.nombre_analisis || analisis.nombre,
+          status:   analisis.estadoAnalisis || analisis.estado_analisis || analisis.estado
+        };
+      }) : [],
     observations: backendSample.observaciones || '',
     transport_conditions: {
       temperature: backendSample.temperatura_transporte || backendSample.temperaturaTransporte || 
@@ -349,6 +355,26 @@ export const samplesService = {
   getById: async (id) => {
     const response = await apiClient.get(`/muestras/${id}`);
     return transformBackendToFrontend(response.data);
+  },
+
+  /**
+   * Get priority for a sample (new endpoint)
+   * GET /muestras/:id/prioridad
+   * Returns one of: 'normal', 'urgente', 'critica'
+   */
+  getPriority: async (id) => {
+    try {
+      const response = await apiClient.get(`/muestras/${id}/prioridad`);
+      const raw = response.data;
+      const value = (raw?.prioridad || raw?.priority || raw || '').toString().toLowerCase();
+      if (!value) return 'normal';
+      if (value.startsWith('crit')) return 'critica';
+      if (value.startsWith('urg')) return 'urgente';
+      return 'normal';
+    } catch (error) {
+      console.warn('[samplesService.getPriority] failed for id', id, error?.message || error);
+      return 'normal';
+    }
   },
 
   /**
@@ -561,7 +587,7 @@ export const samplesService = {
    * Update sample status
    */
   updateStatus: async (id, status) => {
-    const response = await apiClient.patch(`/muestras/${id}/status`, { status });
+    const response = await apiClient.patch(`/muestras/${id}/status`, { estado: status });
     return response.data;
   },
 

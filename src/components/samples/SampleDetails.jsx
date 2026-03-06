@@ -290,9 +290,16 @@ export default function SampleDetails({ sample, onEdit, onClose }) {
                           <div className="flex-1">
                             <span className="text-sm font-medium block">{analysis.name || 'Análisis sin nombre'}</span>
                             {analysis.status && (
-                              <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded mt-1 inline-block">
-                                {analysis.status}
-                              </span>
+                              (() => {
+                                const raw = String(analysis.status || '').toLowerCase();
+                                const label = raw.replace(/_/g, ' ');
+                                const labelFormatted = label.charAt(0).toUpperCase() + label.slice(1);
+                                return (
+                                  <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded mt-1 inline-block">
+                                    {labelFormatted}
+                                  </span>
+                                );
+                              })()
                             )}
                           </div>
                         </div>

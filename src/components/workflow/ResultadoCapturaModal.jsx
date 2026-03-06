@@ -9,6 +9,20 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, XCircle, AlertTriangle, Scan, Save, FlaskConical, SkipForward, AlertCircle } from 'lucide-react';
 import tasksService from '@/api/services/tasks';
 import { WorkOrder } from '@/api/entities';
+import workOrdersService from '@/api/services/workOrders';
+
+// Normalise step name for comparison (strip accents, lowercase)
+const normalizeStepName = (name) =>
+  (name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+const isQCStep = (stepName) => {
+  const n = normalizeStepName(stepName);
+  return n.includes('control de calidad') || n === 'calidad';
+};
+const isValidacionStep = (stepName) => {
+  const n = normalizeStepName(stepName);
+  return n.includes('validacion') || n.includes('validar resultado');
+};
 
 /**
  * ResultadoCapturaModal
@@ -20,7 +34,7 @@ import { WorkOrder } from '@/api/entities';
  *   muestrasOT      - Array of task objects from the OT (enriched with limits from backend)
  *   onResultadoGuardado - callback after saving result
  */
-const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT = [], onResultadoGuardado }) => {
+const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT = [], onResultadoGuardado, currentStepName = '' }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [codigoBarras, setCodigoBarras] = useState('');
   const [tareaInfo, setTareaInfo] = useState(null);
@@ -49,6 +63,14 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   // Current sample based on index
   const currentMuestra = pendingMuestras[currentIndex] || null;
   const totalMuestras = pendingMuestras.length;
+
+  // Determine if this OT previously failed QC
+  const otHadQCFailure = ordenTrabajoId ? workOrdersService.isQCFailed(ordenTrabajoId) : false;
+  // In Validación step with prior QC failure and value still out of range → reject-only mode
+  const isInValidacion = isValidacionStep(currentStepName);
+  const rejectOnlyMode = isInValidacion && otHadQCFailure && validacionEstado === 'invalido';
+  // Also determine if we're in QC step for UI label
+  const isInQC = isQCStep(currentStepName);
 
   useEffect(() => {
     if (open) {
@@ -94,6 +116,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
 
   const autoSelectMuestra = (muestra) => {
     if (!muestra) return;
+    console.warn('[DEBUG] Muestra seleccionada:', JSON.stringify(muestra, null, 2));
     const barcode = muestra.codigo_barras || muestra.codigoBarras || '';
     setCodigoBarras(barcode);
     setTareaInfo({
@@ -102,10 +125,12 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
       numero_muestra: muestra.numero_muestra || muestra.numeroMuestra || '',
       codigo_barras: barcode,
       nombre_analisis: muestra.nombre_analisis || muestra.nombreAnalisis || '',
-      nombre_parametro: muestra.nombre_parametro || muestra.nombreParametro || '',
+      nombre_parametro: muestra.nombre_parametro || muestra.nombreParametro || muestra.nombre_analisis || muestra.nombreAnalisis || '',
       unidad_medida: muestra.unidad_medida || muestra.unidadMedida || null,
       limite_minimo: muestra.limite_minimo || muestra.limiteMinimo || null,
       limite_maximo: muestra.limite_maximo || muestra.limiteMaximo || null,
+      limite_deteccion: muestra.limite_deteccion || muestra.limiteDeteccion || muestra.limite_minimo || muestra.limiteMinimo || null,
+      normativa: muestra.normativa || muestra.norma || muestra.codigo_norma || muestra.codigoNorma || null,
     });
     setTimeout(() => valorRef.current?.focus(), 120);
   };
@@ -130,9 +155,12 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
 
     const inputBarcode = codigoBarras.trim().toUpperCase();
     const allMuestras = muestrasOT.length > 0 ? muestrasOT : pendingMuestras;
+    
+    // Buscar por código de barras O por número de muestra
     const matchedSample = allMuestras.find(m => {
       const sampleBarcode = (m.codigo_barras || m.codigoBarras || '').toString().trim().toUpperCase();
-      return sampleBarcode && sampleBarcode === inputBarcode;
+      const sampleNumber = (m.numero_muestra || m.numeroMuestra || '').toString().trim().toUpperCase();
+      return (sampleBarcode && sampleBarcode === inputBarcode) || (sampleNumber && sampleNumber === inputBarcode);
     });
 
     if (matchedSample) {
@@ -145,7 +173,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
       return;
     }
 
-    setError('El código de barras no corresponde a ninguna muestra de esta OT');
+    setError('El código no corresponde a ninguna muestra de esta OT');
     setTareaInfo(null);
     setLoading(false);
   };
@@ -189,15 +217,77 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     setError(null);
     setSuccessMsg(null);
     try {
+      const taskId = tareaInfo.id_muestra_analisis ?? tareaInfo.idMuestraAnalisis;
+      // Calculate cumple_normativa based on validation state or limits
+      let cumpleNormativa = null;
+      if (validacionEstado === 'valido') {
+        cumpleNormativa = true;
+      } else if (validacionEstado === 'invalido') {
+        cumpleNormativa = false;
+      } else {
+        // If no explicit validation state, check against limits if available
+        const valor = parseFloat(valorMedido);
+        const min = parseFloat(tareaInfo?.limite_minimo);
+        const max = parseFloat(tareaInfo?.limite_maximo);
+        if (!isNaN(valor)) {
+          if (!isNaN(min) && !isNaN(max)) {
+            cumpleNormativa = valor >= min && valor <= max;
+          } else if (!isNaN(max)) {
+            cumpleNormativa = valor <= max;
+          } else if (!isNaN(min)) {
+            cumpleNormativa = valor >= min;
+          } else {
+            // No limits available, assume compliant
+            cumpleNormativa = true;
+          }
+        }
+      }
+      // Backend expects parametros as a Map<String, ParametroResultadoDTO> keyed by parameter name
+      const parametroKey = tareaInfo.nombre_parametro || tareaInfo.nombre_analisis;
       const payload = {
-        id_muestra_analisis: tareaInfo.id_muestra_analisis ?? tareaInfo.idMuestraAnalisis,
-        codigo_barras: codigoBarras,
-        valor_medido: valorMedido,
-        observaciones: observaciones || null,
+        parametros: {
+          [parametroKey]: {
+            valor_medido: parseFloat(valorMedido),
+            cumple_normativa: cumpleNormativa,
+            observaciones: observaciones || null,
+          },
+        },
       };
-      const saved = await tasksService.guardarResultado(payload);
+      console.warn('[DEBUG] Guardando resultado:', { taskId, payload });
+      const saved = await tasksService.updateResult(taskId, payload);
+
+      // Also persist valor_medido via the simpler guardarResultado endpoint
+      // so the value is stored directly on the task record and returned by getById
+      try {
+        await tasksService.guardarResultado({
+          id_muestra_analisis: taskId,
+          codigo_barras: tareaInfo.codigo_barras || tareaInfo.numero_muestra || '',
+          valor_medido: parseFloat(valorMedido),
+          observaciones: observaciones || null,
+        });
+      } catch (fallbackErr) {
+        // Non-critical: the primary updateResult already succeeded
+        console.warn('[DEBUG] guardarResultado fallback failed (non-critical):', fallbackErr?.response?.data || fallbackErr.message);
+      }
+
       const newSavedCount = savedCount + 1;
       setSavedCount(newSavedCount);
+
+      // Determine if this is a QC failure (Control de Calidad step + value out of range)
+      const qcFailed = isQCStep(currentStepName) && validacionEstado === 'invalido';
+
+      if (qcFailed) {
+        // QC failed — notify parent so it advances workflow but marks step as fallido
+        onResultadoGuardado && onResultadoGuardado({ ...saved, qc_failed: true });
+        setSuccessMsg(null);
+        // Close modal — parent will advance to Validación de Resultados
+        setTimeout(() => {
+          onOpenChange(false);
+          fullReset();
+        }, 300);
+        return;
+      }
+
       onResultadoGuardado && onResultadoGuardado(saved);
 
       const nextIndex = currentIndex + 1;
@@ -215,7 +305,16 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
         }, 1500);
       }
     } catch (err) {
-      setError(err?.response?.data?.mensaje || err?.response?.data?.message || 'Error al guardar el resultado');
+      // Log detailed error for debugging
+      console.error('[DEBUG] Error guardando resultado:', err?.response?.data);
+      // Extract detailed validation errors if available
+      const errorData = err?.response?.data;
+      let errorMsg = errorData?.mensaje || errorData?.message || 'Error al guardar el resultado';
+      if (errorData?.errors) {
+        const fieldErrors = Object.entries(errorData.errors).map(([field, msg]) => `${field}: ${msg}`).join(', ');
+        errorMsg = `${errorMsg} (${fieldErrors})`;
+      }
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -235,41 +334,111 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     setRejectLoading(true);
     setError(null);
     try {
-      // Crear OT rechazada — el backend marca la tarea como rechazada y crea nueva OT
-      await WorkOrder.crearOTRechazadas(ordenTrabajoId, {
-        tecnicoAsignadoId: null,
-        notas: rejectNotes || `Muestra ${tareaInfo.numero_muestra} rechazada por valor fuera de normativa: ${valorMedido}`,
-        tareaIds: [tareaInfo.id_muestra_analisis]
-      });
-      
-      setSuccessMsg(`✓ Muestra ${tareaInfo.numero_muestra} rechazada y enviada a nueva OT`);
+      const taskId = tareaInfo.id_muestra_analisis ?? tareaInfo.idMuestraAnalisis;
+      const inQC = isQCStep(currentStepName);
+      const inValidacion = isValidacionStep(currentStepName);
+
+      // 1. Guardar resultado con cumple_normativa=false si hay valor medido
+      if (valorMedido !== '') {
+        const parametroKey = tareaInfo.nombre_parametro || tareaInfo.nombre_analisis;
+        const payload = {
+          parametros: {
+            [parametroKey]: {
+              valor_medido: parseFloat(valorMedido),
+              cumple_normativa: false,
+              observaciones: rejectNotes || `Rechazada: valor fuera de normativa (${valorMedido})`,
+            },
+          },
+        };
+        try {
+          await tasksService.updateResult(taskId, payload);
+        } catch (resultErr) {
+          console.warn('No se pudo guardar resultado antes del rechazo:', resultErr?.message);
+        }
+      }
+
+      // ------- QC STEP: mark as failed, advance to Validación, OT stays active -------
+      if (inQC) {
+        setSuccessMsg(`✓ Control de calidad fallido — avanzando a Validación de Resultados`);
+        setShowRejectDialog(false);
+        setRejectNotes('');
+
+        // Signal QC failure to parent (advance step, mark QC failed)
+        onResultadoGuardado && onResultadoGuardado({
+          action: 'rejected',
+          qc_failed: true,
+          tarea_id: taskId,
+          numero_muestra: tareaInfo.numero_muestra,
+        });
+
+        setTimeout(() => {
+          onOpenChange(false);
+          fullReset();
+        }, 800);
+        return;
+      }
+
+      // ------- VALIDACIÓN STEP: full rejection → cancel OT → offer to generate new OT -------
+      // 2. Marcar la tarea como RECHAZADA en el backend
+      try {
+        await tasksService.rechazarTarea(taskId);
+      } catch (rejectErr) {
+        if (tareaInfo.id_muestra) {
+          try {
+            await tasksService.rechazarMuestra(tareaInfo.id_muestra);
+          } catch (muErr) {
+            console.warn('Ambos endpoints de rechazo fallaron:', muErr?.message);
+          }
+        } else {
+          console.warn('rechazarTarea falló:', rejectErr?.message);
+        }
+      }
+
       setShowRejectDialog(false);
       setRejectNotes('');
-      
-      onResultadoGuardado && onResultadoGuardado({
-        action: 'rejected',
-        tarea_id: tareaInfo.id_muestra_analisis,
-        numero_muestra: tareaInfo.numero_muestra
-      });
 
-      // Avanzar a la siguiente muestra después de 1.5 segundos
-      // Nota: pendingMuestras se recalcula al cambiar muestrasOT,
-      // pero podría no haberse actualizado aún, así que verificamos manualmente
+      // Collect ALL rejected task ids for this OT (current + any previously rejected)
+      const rejectedTaskIds = [taskId];
+      const rejectedMuestras = [
+        { id: taskId, numero: tareaInfo.numero_muestra, analisis: tareaInfo.nombre_analisis }
+      ];
+
+      // Check remaining pending samples
       const remainingAfterReject = pendingMuestras.filter(
         m => (m.id_muestra_analisis || m.idMuestraAnalisis) !== tareaInfo.id_muestra_analisis
       );
-      
+
+      // Cancel the OT (all samples rejected or this is the final rejection in validation)
+      if (remainingAfterReject.length === 0) {
+        try {
+          await WorkOrder.cancelar(ordenTrabajoId);
+        } catch (cancelErr) {
+          console.warn('Cancel API failed, registrando localmente:', cancelErr?.message);
+        }
+        WorkOrder.markLocalCancelled(ordenTrabajoId);
+      }
+
+      // Signal to parent: validation rejected → go to Cancelados + offer new OT
+      onResultadoGuardado && onResultadoGuardado({
+        action: 'rejected',
+        validation_rejected: true,
+        tarea_id: taskId,
+        numero_muestra: tareaInfo.numero_muestra,
+        ot_cancelled: remainingAfterReject.length === 0,
+        rejected_tasks: rejectedTaskIds,
+        rejected_muestras: rejectedMuestras,
+      });
+
+      // Advance to next sample or close
       setTimeout(() => {
         if (remainingAfterReject.length > 0) {
-          // Hay más muestras — mantener abierto y avanzar
           const nextIdx = Math.min(currentIndex, remainingAfterReject.length - 1);
           setCurrentIndex(nextIdx);
           setSuccessMsg(null);
           resetFormFields();
           autoSelectMuestra(remainingAfterReject[nextIdx]);
         } else {
-          // Todas las muestras procesadas
-          setSuccessMsg('✓ Todas las muestras han sido procesadas');
+          setSuccessMsg('✓ Muestras rechazadas — OT enviada a Cancelados');
           setTimeout(() => {
             onOpenChange(false);
             fullReset();
@@ -286,38 +455,38 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   const renderLimites = () => {
     if (!tareaInfo) return null;
     const unidad = tareaInfo.unidad_medida || '';
-    const min = tareaInfo.limite_minimo ?? null;
+    const min = tareaInfo.limite_minimo ?? tareaInfo.limite_deteccion ?? null;
     const max = tareaInfo.limite_maximo ?? null;
-    const parametro = tareaInfo.nombre_parametro || '';
-
-    if (!unidad && min === null && max === null) return null;
+    const parametro = tareaInfo.nombre_parametro || tareaInfo.nombre_analisis || '';
+    const normativa = tareaInfo.normativa || tareaInfo.norma || 'NCh 409/1';
 
     return (
-      <div className="bg-slate-50 border rounded p-3 text-sm space-y-1">
-        {parametro && (
-          <div className="flex justify-between">
-            <span className="text-gray-600">Parámetro:</span>
-            <strong>{parametro}</strong>
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs">
+        <div className="font-semibold text-blue-800 mb-2 flex items-center gap-1">
+          <FlaskConical className="w-3 h-3" />
+          Parámetros a Medir
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700">
+          <div className="flex items-center gap-1">
+            <span className="text-gray-500">•</span>
+            <span>{normativa}</span>
           </div>
-        )}
-        {unidad && (
-          <div className="flex justify-between">
-            <span className="text-gray-600">Unidad:</span>
-            <strong>{unidad}</strong>
-          </div>
-        )}
-        {min !== null && max !== null && (
-          <div className="flex justify-between">
-            <span className="text-gray-600">Rango normativa:</span>
-            <strong>{min} – {max} {unidad}</strong>
-          </div>
-        )}
-        {min === null && max !== null && (
-          <div className="flex justify-between">
-            <span className="text-gray-600">Máximo normativa:</span>
-            <strong>≤ {max} {unidad}</strong>
-          </div>
-        )}
+          {unidad && (
+            <div>
+              <span className="text-gray-500">Unidad:</span> <span className="font-medium">{unidad}</span>
+            </div>
+          )}
+          {min !== null && (
+            <div>
+              <span className="text-gray-500">Lím. Detección:</span> <span className="font-medium">{min}</span>
+            </div>
+          )}
+          {max !== null && (
+            <div>
+              <span className="text-gray-500">Lím. Máximo:</span> <span className="font-medium">{max}</span>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -333,10 +502,24 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
       );
     }
     return (
-      <div className="flex items-center gap-2 p-2 rounded bg-red-50 text-red-700">
-        <AlertTriangle className="w-4 h-4" />
-        ALERTA: Valor fuera de norma
-      </div>
+      <>
+        <div className="flex items-center gap-2 p-2 rounded bg-red-50 text-red-700">
+          <AlertTriangle className="w-4 h-4" />
+          ALERTA: Valor fuera de norma
+        </div>
+        {/* Show reject-only warning in Validación step when QC previously failed */}
+        {rejectOnlyMode && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-red-100 border border-red-300 text-red-800 font-semibold">
+            <XCircle className="w-5 h-5 flex-shrink-0" />
+            <div>
+              <p>Control de calidad fallido</p>
+              <p className="text-xs font-normal mt-1">
+                El valor sigue fuera de los parámetros normativos. Solo se permite rechazar la muestra.
+              </p>
+            </div>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -352,7 +535,9 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
           <div className="flex items-center justify-between w-full">
             <DialogTitle className="flex items-center gap-2">
               <Scan className="w-5 h-5" />
-              Capturar Resultado
+              {isInValidacion && otHadQCFailure
+                ? 'Validación de Resultados — QC Fallido'
+                : 'Capturar Resultado'}
             </DialogTitle>
             {totalMuestras > 0 && (
               <span className="text-sm font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
@@ -360,6 +545,13 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
               </span>
             )}
           </div>
+          {/* QC failure banner in Validación step */}
+          {isInValidacion && otHadQCFailure && (
+            <div className="mt-2 flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm font-medium">Control de calidad fallido — Verifique los valores antes de continuar</span>
+            </div>
+          )}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -505,25 +697,37 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
             <Button variant="outline" onClick={() => { onOpenChange(false); fullReset(); }} disabled={loading}>
               Cerrar
             </Button>
-            {currentIndex + 1 < totalMuestras && (
+            {currentIndex + 1 < totalMuestras && !rejectOnlyMode && (
               <Button variant="ghost" onClick={handleSkip} disabled={loading} title="Saltar a la siguiente muestra">
                 <SkipForward className="w-4 h-4 mr-1" />
                 Omitir
               </Button>
             )}
           </div>
-          <Button
-            onClick={handleGuardar}
-            disabled={loading || !tareaInfo || valorMedido === ''}
-            className="bg-green-600 hover:bg-green-700"
-          >
-            {loading ? 'Guardando...' : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Guardar {currentIndex + 1 < totalMuestras ? 'y Siguiente' : ''}
-              </>
-            )}
-          </Button>
+          {/* In reject-only mode (Validación + QC failed + still invalid), only show reject button */}
+          {rejectOnlyMode ? (
+            <Button
+              variant="destructive"
+              onClick={handleRejectSample}
+              disabled={loading || !tareaInfo}
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Rechazar y Enviar a Cancelados
+            </Button>
+          ) : (
+            <Button
+              onClick={handleGuardar}
+              disabled={loading || !tareaInfo || valorMedido === ''}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {loading ? 'Guardando...' : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Guardar {currentIndex + 1 < totalMuestras ? 'y Siguiente' : ''}
+                </>
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -561,7 +765,9 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
           </div>
           
           <div className="text-xs text-gray-600">
-            La muestra será enviada a una nueva OT de rechazadas para su reprocesamiento.
+            {isQCStep(currentStepName)
+              ? 'La muestra pasará a Validación de Resultados para verificación. La OT permanecerá activa.'
+              : 'La muestra será rechazada y la OT pasará a Cancelados. Se ofrecerá generar una nueva OT.'}
           </div>
         </div>
         

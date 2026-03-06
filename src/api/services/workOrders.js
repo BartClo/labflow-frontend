@@ -1,205 +1,395 @@
 /**
  * Work Orders Service
- * 
- * Handles all work order-related API operations
- * Connected to backend /api/ordenes endpoints
+ *
+ * Handles all work order-related API operations.
+ * Backend base path: /api/ordenes
  */
 
 import apiClient from '../client';
 
+// Client-side registry of OTs explicitly cancelled by the user.
+// Used as fallback when the backend cancel endpoint is unavailable.
+const CANCELLED_KEY = 'labflow_cancelled_ots';
+const localCancelledIds = new Set(
+  JSON.parse(localStorage.getItem(CANCELLED_KEY) || '[]')
+);
+const markLocalCancelled = (id) => {
+  localCancelledIds.add(id);
+  localStorage.setItem(CANCELLED_KEY, JSON.stringify([...localCancelledIds]));
+};
+
+// Client-side registry of OT priorities.
+// The backend POST /ordenes does not accept/return 'prioridad', so we store it
+// locally and overlay it on every transform to keep badges in sync.
+const PRIORITIES_KEY = 'labflow_ot_priorities';
+const localPriorities = new Map(
+  Object.entries(JSON.parse(localStorage.getItem(PRIORITIES_KEY) || '{}'))
+);
+const setLocalPriority = (id, priority) => {
+  if (!id || !priority) return;
+  localPriorities.set(String(id), priority.toLowerCase());
+  localStorage.setItem(PRIORITIES_KEY, JSON.stringify(Object.fromEntries(localPriorities)));
+};
+
+// Client-side registry of QC failures per OT.
+// When a measured value fails Control de Calidad, we store it here so that
+// the Validación de Resultados step can enforce reject-only mode and the
+// timeline can display the QC step as "fallido" (red).
+const QC_FAILURES_KEY = 'labflow_qc_failures';
+const loadQCFailures = () => {
+  try { return JSON.parse(localStorage.getItem(QC_FAILURES_KEY) || '{}'); } catch { return {}; }
+};
+const setQCFailed = (otId) => {
+  const failures = loadQCFailures();
+  failures[String(otId)] = true;
+  localStorage.setItem(QC_FAILURES_KEY, JSON.stringify(failures));
+};
+const isQCFailed = (otId) => {
+  return !!loadQCFailures()[String(otId)];
+};
+const clearQCFailure = (otId) => {
+  const failures = loadQCFailures();
+  delete failures[String(otId)];
+  localStorage.setItem(QC_FAILURES_KEY, JSON.stringify(failures));
+};
+
 /**
- * Transform backend order data to frontend format
+ * Transform a backend OrdenTrabajo object to the frontend-expected shape.
+ * Backend fields (snake_case) → Frontend fields used across components.
  */
-const transformBackendToFrontend = (backendOrder) => {
-  if (!backendOrder) return null;
-  
-  // Build full technician name from backend UsuarioBasicDTO
-  const tec = backendOrder.tecnico_asignado || backendOrder.tecnicoAsignado || {};
-  const tecNombre = [tec.nombre, tec.apellido].filter(Boolean).join(' ') || null;
+const transformWorkOrder = (raw) => {
+  if (!raw) return null;
+
+  const tareas = raw.tareas || raw.tasks || [];
+
+  // Build a combined "test_parameter" label from unique analysis names
+  const analysisNames = [...new Set(
+    tareas.map(t => t.nombre_analisis || t.nombreAnalisis).filter(Boolean)
+  )].join(', ');
+
+  // Normalize status: backend sends ABIERTA | EN_PROGRESO | CERRADA etc.
+  const rawStatus = (raw.estado || raw.status || '').toLowerCase();
+  const statusMap = {
+    abierta:     'generada',
+    en_progreso: 'en_analisis',
+    en_proceso:  'en_analisis',
+    en_analisis: 'en_analisis',
+    cerrada:     'completada',
+    completada:  'completada',
+    finalizada:  'completada',
+    cancelada:   'cancelada',
+    generada:    'generada',
+  };
+  const normalizedStatus = statusMap[rawStatus] || rawStatus || 'generada';
+
+  // Start with backend status, then apply overrides
+  let effectiveStatus = normalizedStatus;
+
+  // Override to 'cancelada' if locally flagged (backend couldn't persist the cancel)
+  if (localCancelledIds.has(raw.id_orden_trabajo || raw.id || raw.idOrden || raw.id_orden)) {
+    effectiveStatus = 'cancelada';
+  }
+  if (tareas.length > 0) {
+    const taskStatuses = tareas.map(t =>
+      (t.estado_analisis || t.estadoAnalisis || '').toUpperCase()
+    );
+    const allRejected = taskStatuses.every(s => s === 'RECHAZADO' || s === 'RECHAZADA' || s === 'CANCELADO' || s === 'CANCELADA');
+    const hasRejected = taskStatuses.some(s => s === 'RECHAZADO' || s === 'RECHAZADA');
+
+    if (allRejected) {
+      effectiveStatus = 'cancelada';
+    }
+    // NOTE: We intentionally do NOT override to 'completada' based on task statuses alone.
+    // Tasks may be COMPLETADO while the workflow still has steps in progress (e.g. QC, Validación).
+    // The OT status should come from the backend or the workflow step progress.
+  }
+
+  const tecnico = raw.tecnico_asignado || null;
+  const tecnicoNombre = tecnico
+    ? [tecnico.nombre, tecnico.apellido].filter(Boolean).join(' ').trim()
+    : (raw.assigned_technician || null);
 
   return {
-    id: backendOrder.id_orden_trabajo || backendOrder.idOrdenTrabajo,
-    ot_number: backendOrder.codigo_ot || backendOrder.codigoOT,
-    status: backendOrder.estado?.toLowerCase() || 'generada',
-    created_date: backendOrder.fecha_creacion || backendOrder.fechaCreacion,
-    generated_at: backendOrder.fecha_creacion || backendOrder.fechaCreacion,
-    completion_date: backendOrder.fecha_finalizacion || backendOrder.fechaFinalizacion,
-    assigned_technician: tecNombre,
-    tecnico_asignado: tec.nombre ? { nombre_completo: tecNombre, email: tec.email } : null,
-    technician_id: tec.id_usuario || tec.idUsuario,
-    tasks: backendOrder.tareas || [],
-    tareas: backendOrder.tareas || [],
-    total_tasks: backendOrder.total_tareas || backendOrder.totalTareas || 0,
-    pending_tasks: backendOrder.tareas_pendientes || backendOrder.tareasPendientes || 0,
-    completed_tasks: backendOrder.tareas_completadas || backendOrder.tareasCompletadas || 0,
-    sample_count: backendOrder.total_tareas || backendOrder.totalTareas || 0,
-    // Compute analysis info from tasks if available
-    test_parameter: computeAnalysisNames(backendOrder.tareas),
-    priority: computePriority(backendOrder.tareas)
+    // Identity
+    id:        raw.id_orden_trabajo || raw.id || raw.idOrden || raw.id_orden,
+    ot_number: raw.codigo_ot || raw.numero_ot || raw.ot_number || raw.numeroOt,
+
+    // Status / priority — prefer backend value, then locally stored override, then default
+    status:   effectiveStatus,
+    priority: (() => {
+      const backendPriority = (raw.prioridad || raw.priority || '').toLowerCase();
+      const id = raw.id_orden_trabajo || raw.id || raw.idOrden || raw.id_orden;
+      return backendPriority || localPriorities.get(String(id)) || 'normal';
+    })(),
+
+    // Dates
+    generated_at:    raw.fecha_creacion || raw.generated_at || raw.fechaCreacion,
+    created_date:    raw.fecha_creacion || raw.created_date  || raw.fechaCreacion,
+    completion_date: raw.fecha_finalizacion || raw.completion_date || raw.fechaFinalizacion,
+
+    // Samples / tasks - normalize task data for ResultadoCapturaModal
+    tareas,
+    tasks: tareas.map(t => ({
+      ...t,
+      // Normalize field names for modal compatibility
+      id_muestra_analisis: t.id_muestra_analisis || t.idMuestraAnalisis,
+      numero_muestra: t.numero_muestra || t.numeroMuestra,
+      nombre_analisis: t.nombre_analisis || t.nombreAnalisis,
+      codigo_barras: t.codigo_barras || t.codigoBarras || t.barcode,
+      estado_analisis: t.estado_analisis || t.estadoAnalisis,
+      limite_minimo: t.limite_minimo || t.limiteMinimo || t.valor_minimo || t.valorMinimo,
+      limite_maximo: t.limite_maximo || t.limiteMaximo || t.valor_maximo || t.valorMaximo,
+      limite_deteccion: t.limite_deteccion || t.limiteDeteccion || t.limite_minimo || t.limiteMinimo,
+      unidad_medida: t.unidad_medida || t.unidadMedida,
+      nombre_parametro: t.nombre_parametro || t.nombreParametro || t.nombre_analisis || t.nombreAnalisis,
+      normativa: t.normativa || t.norma || t.codigo_norma || t.codigoNorma,
+      // Result fields
+      valor_medido: t.valor_medido || t.valorMedido || null,
+      observaciones: t.observaciones || null,
+      cumple_normativa: t.cumple_normativa ?? t.cumpleNormativa ?? null,
+      fecha_resultado: t.fecha_resultado || t.fechaResultado || null,
+    })),
+    sample_count:   raw.total_tareas ?? tareas.length ?? raw.sample_count ?? 0,
+    sample_numbers: tareas.map(t => t.numero_muestra || t.numeroMuestra).filter(Boolean).join(', ')
+                    || raw.sample_numbers || '',
+
+    // Analysis info
+    test_parameter: analysisNames || raw.test_parameter || raw.analysis_type || '',
+    analysis_type:  analysisNames || raw.analysis_type  || raw.test_parameter || '',
+
+    // Technician
+    assigned_technician: tecnicoNombre,
+    tecnico_asignado:    tecnico,
+
+    // Misc
+    completed_tasks: tareas.filter(t =>
+      (t.estado_analisis || t.estadoAnalisis || '').toLowerCase().includes('complet')
+    ).length,
+    rejected_tasks: tareas.filter(t => {
+      const s = (t.estado_analisis || t.estadoAnalisis || '').toUpperCase();
+      return s === 'RECHAZADO' || s === 'RECHAZADA';
+    }).length,
+    has_rejected: tareas.some(t => {
+      const s = (t.estado_analisis || t.estadoAnalisis || '').toUpperCase();
+      return s === 'RECHAZADO' || s === 'RECHAZADA';
+    }),
+    equipment_used: raw.equipment_used || '',
   };
-};
-
-/**
- * Compute priority based on tasks
- */
-const computePriority = (tasks) => {
-  if (!tasks || tasks.length === 0) return 'normal';
-  
-  const priorities = tasks.map(t => (t.prioridad || 'MEDIA').toUpperCase());
-  if (priorities.includes('ALTA')) return 'urgente';
-  return 'normal';
-};
-
-/**
- * Compute distinct analysis names from tasks
- */
-const computeAnalysisNames = (tasks) => {
-  if (!tasks || tasks.length === 0) return 'Sin análisis';
-  const names = [...new Set(tasks.map(t => t.nombre_analisis || t.nombreAnalisis).filter(Boolean))];
-  if (names.length === 0) return 'Sin análisis';
-  if (names.length === 1) return names[0];
-  return `${names[0]} (+${names.length - 1} más)`;
 };
 
 export const workOrdersService = {
   /**
-   * Get all work orders
+   * Get all work orders  GET /ordenes
    */
   getAll: async (params = {}) => {
-    try {
-      const response = await apiClient.get('/ordenes', { params });
-      console.log('📦 Raw work orders response:', response.data);
-      
-      // Transform each order
-      const orders = Array.isArray(response.data) ? response.data : [];
-      return orders.map(transformBackendToFrontend);
-    } catch (error) {
-      console.error('❌ Error fetching work orders:', error);
-      // Return empty array instead of throwing to avoid breaking the UI
-      return [];
-    }
+    const response = await apiClient.get('/ordenes', { params });
+    const data = response.data;
+    const list = Array.isArray(data) ? data : (data?.content || []);
+    return list.map(transformWorkOrder);
   },
 
   /**
-   * Get a single work order by ID
+   * Get a single work order by ID  GET /ordenes/:id
    */
   getById: async (id) => {
     const response = await apiClient.get(`/ordenes/${id}`);
-    return transformBackendToFrontend(response.data);
+    if (response.data?.tareas?.length > 0) {
+      console.warn('[DEBUG] Tarea raw del backend:', JSON.stringify(response.data.tareas[0], null, 2));
+    }
+    return transformWorkOrder(response.data);
   },
 
   /**
-   * Create a new work order
-   * @param {Object} workOrderData - { tarea_ids: UUID[], tecnico_asignado_id: UUID }
+   * Create a new work order  POST /ordenes
+   * The backend expects { tarea_ids, tecnico_asignado_id, prioridad }
    */
   create: async (workOrderData) => {
-    console.log('🚀 Creating work order with data:', workOrderData);
-    
-    // Transform to backend format
     const backendData = {
-      tarea_ids: workOrderData.tarea_ids || workOrderData.tareaIds,
-      tecnico_asignado_id: workOrderData.tecnico_asignado_id || workOrderData.tecnicoAsignadoId
+      tarea_ids:           workOrderData.tarea_ids || [],
+      tecnico_asignado_id: workOrderData.tecnico_asignado_id || null,
+      prioridad:           (workOrderData.priority || 'normal').toUpperCase(),
     };
-    
-    console.log('📤 Sending to backend:', backendData);
+
+    if (!backendData.tarea_ids || backendData.tarea_ids.length === 0) {
+      throw new Error('No se encontraron tareas para crear la orden de trabajo.');
+    }
     const response = await apiClient.post('/ordenes', backendData);
-    console.log('✅ Work order created:', response.data);
-    return transformBackendToFrontend(response.data);
+    const result = transformWorkOrder(response.data);
+    // Backend doesn't store/return prioridad — persist it locally so the badge stays correct
+    const chosenPriority = (workOrderData.priority || 'normal').toLowerCase();
+    if (result?.id) {
+      setLocalPriority(result.id, chosenPriority);
+      result.priority = chosenPriority;
+    }
+    return result;
   },
 
   /**
-   * Update work order status
-   * @param {UUID} id - Order ID
-   * @param {string} status - New status (PENDIENTE, EN_PROCESO, COMPLETADA, CANCELADA)
+   * Update an existing work order — tries PUT, PATCH, POST for compatibility.
    */
-  updateStatus: async (id, status) => {
-    const response = await apiClient.put(`/ordenes/${id}/estado`, null, {
-      params: { estado: status.toUpperCase() }
-    });
-    return transformBackendToFrontend(response.data);
-  },
-
-  /**
-   * Get work orders by technician ID
-   */
-  getByTechnicianId: async (technicianId) => {
-    const response = await apiClient.get(`/ordenes/tecnico/${technicianId}`);
-    const orders = Array.isArray(response.data) ? response.data : [];
-    return orders.map(transformBackendToFrontend);
-  },
-
-  /**
-   * List work orders (alias for getAll)
-   */
-  list: async (ordering = null) => {
-    return workOrdersService.getAll({ ordering });
-  },
-
-  // Legacy methods for backward compatibility
   update: async (id, workOrderData) => {
-    console.warn('⚠️ workOrdersService.update is not implemented in backend');
+    // Map frontend status keys back to backend-expected values
+    const statusToBackend = {
+      generada:          'ABIERTA',
+      abierta:           'ABIERTA',
+      en_proceso:        'EN_PROGRESO',
+      preparacion:       'EN_PROGRESO',
+      en_ejecucion:      'EN_PROGRESO',
+      resultado_registrado: 'EN_PROGRESO',
+      validada:          'EN_PROGRESO',
+      completada:        'COMPLETADA',
+      finalizada:        'COMPLETADA',
+      cancelada:         'CANCELADA',
+    };
+    const frontStatus = (workOrderData.status || '').toLowerCase();
+    const backendStatus = statusToBackend[frontStatus] || workOrderData.status?.toUpperCase();
+
+    // Support both assigned_technician (id) and tecnico_asignado_id field names
+    const tecnicoId = workOrderData.tecnico_asignado_id
+      || workOrderData.assigned_technician
+      || null;
+
+    const backendData = {
+      estado:              backendStatus,
+      prioridad:           workOrderData.priority?.toUpperCase(),
+      tecnico_asignado_id: tecnicoId,
+    };
+
+    const attempts = [
+      () => apiClient.put(`/ordenes/${id}`, backendData),
+      () => apiClient.patch(`/ordenes/${id}`, backendData),
+      () => apiClient.post(`/ordenes/${id}`, backendData),
+    ];
+    let lastErr;
+    for (const attempt of attempts) {
+      try {
+        const response = await attempt();
+        const result = transformWorkOrder(response.data);
+        // Persist new priority locally so it survives a full reload from backend
+        const newPriority = (workOrderData.priority || '').toLowerCase();
+        if (newPriority && result?.id) {
+          setLocalPriority(result.id, newPriority);
+          result.priority = newPriority;
+        }
+        return result;
+      } catch (err) {
+        lastErr = err;
+        const status = err?.response?.status;
+        const msg = (err?.response?.data?.message || err?.response?.data?.error || '').toLowerCase();
+        const isMethodError = (status === 405 || status === 500) &&
+          (msg.includes('not supported') || msg.includes('method'));
+        if (!isMethodError) throw err;
+      }
+    }
+    throw lastErr;
+  },
+
+  delete: async (id) => {
+    const response = await apiClient.delete(`/ordenes/${id}`);
+    return response.data;
+  },
+
+  updateStatus: async (id, status) => {
+    const statusToBackend = {
+      generada:    'ABIERTA',
+      abierta:     'ABIERTA',
+      en_proceso:  'EN_PROGRESO',
+      completada:  'COMPLETADA',
+      finalizada:  'COMPLETADA',
+      cancelada:   'CANCELADA',
+    };
+    const key = (status || '').toLowerCase();
+    const backendStatus = statusToBackend[key] || status?.toUpperCase();
+    const body = { estado: backendStatus };
+
+    // Try action-based POST first (common in Spring Boot), then fall back to PUT
+    const attempts = [
+      () => apiClient.post(`/ordenes/${id}/estado`, body),
+      () => apiClient.put(`/ordenes/${id}/estado`, body),
+      () => apiClient.patch(`/ordenes/${id}/estado`, body),
+    ];
+    let lastErr;
+    for (const attempt of attempts) {
+      try {
+        const response = await attempt();
+        return transformWorkOrder(response.data);
+      } catch (err) {
+        lastErr = err;
+        const msg = err?.response?.data?.message || err?.response?.data?.error || '';
+        // Only retry if it's an HTTP-method-not-supported error
+        const isMethodError = (err?.response?.status === 405 || err?.response?.status === 500) &&
+          (msg.toLowerCase().includes('not supported') || msg.toLowerCase().includes('method'));
+        if (!isMethodError) throw err;
+      }
+    }
+    throw lastErr;
+  },
+
+  /**
+   * Cancel a work order — dedicated cancel endpoint with method fallback.
+   */
+  cancelar: async (id) => {
+    const attempts = [
+      () => apiClient.post(`/ordenes/${id}/cancelar`),
+      () => apiClient.post(`/ordenes/${id}/estado`, { estado: 'CANCELADA' }),
+      () => apiClient.put(`/ordenes/${id}/estado`, { estado: 'CANCELADA' }),
+    ];
+    let lastErr;
+    for (const attempt of attempts) {
+      try {
+        const response = await attempt();
+        return transformWorkOrder(response.data);
+      } catch (err) {
+        lastErr = err;
+        const msg = err?.response?.data?.message || err?.response?.data?.error || '';
+        const isMethodError = (err?.response?.status === 405 || err?.response?.status === 500) &&
+          (msg.toLowerCase().includes('not supported') || msg.toLowerCase().includes('method'));
+        if (!isMethodError) throw err;
+      }
+    }
+    // If all API attempts fail, still update local status by returning a mock object flag
+    console.warn('[cancelar] All cancel endpoints failed — flagging locally only');
     return null;
   },
 
   /**
-   * Delete a work order
-   * @param {UUID} id - Order ID to delete
-   * @returns {Promise<void>}
+   * Expose local cancel flag so the modal can call it directly.
    */
-  delete: async (id) => {
-    console.log('🗑️ Deleting work order:', id);
-    await apiClient.delete(`/ordenes/${id}`);
-    console.log('✅ Work order deleted successfully');
-  },
+  markLocalCancelled,
 
-  getByClientId: async (clientId) => {
-    console.warn('⚠️ workOrdersService.getByClientId is not implemented in backend');
-    return [];
-  },
+  /**
+   * QC failure helpers – used by WorkflowTimeline / ResultadoCapturaModal
+   */
+  setQCFailed,
+  isQCFailed,
+  clearQCFailure,
 
+  /**
+   * Get work order statistics  GET /ordenes/stats
+   */
   getStats: async () => {
-    console.warn('⚠️ workOrdersService.getStats is not implemented in backend');
-    return {};
-  },
-  /**
-   * Get workflow progress for a work order
-   * GET /api/ordenes/{id}/workflow
-   */
-  getWorkflow: async (id) => {
-    const response = await apiClient.get(`/ordenes/${id}/workflow`);
+    const response = await apiClient.get('/ordenes/stats');
     return response.data;
   },
 
   /**
-   * Complete the current workflow stage and advance
-   * POST /api/ordenes/{id}/workflow/completar-etapa
-   * @param {UUID} id - Order ID
-   * @param {string|null} notas - Optional notes
+   * List work orders with optional ordering (alias of getAll)
    */
-  completarEtapa: async (id, notas = null) => {
-    const body = notas ? { notas } : {};
-    const response = await apiClient.post(`/ordenes/${id}/workflow/completar-etapa`, body);
-    return response.data;
+  list: async (ordering = null) => {
+    const params = ordering ? { ordering } : {};
+    return workOrdersService.getAll(params);
   },
 
   /**
-   * Create a new OT with rejected samples
-   * POST /api/ordenes/{id}/crear-ot-rechazadas
+   * Create a new OT for rejected samples from an existing OT
+   * POST /ordenes/:id/crear-ot-rechazadas
    */
-  crearOTRechazadas: async (id, { tecnicoAsignadoId = null, notas = null, tareaIds = null } = {}) => {
+  crearOTRechazadas: async (workOrderId, { tecnicoAsignadoId = null, notas = null, tareaIds = [] } = {}) => {
     const body = {};
     if (tecnicoAsignadoId) body.tecnico_asignado_id = tecnicoAsignadoId;
     if (notas) body.notas = notas;
-    if (tareaIds) body.tarea_ids = tareaIds;
-    const response = await apiClient.post(`/ordenes/${id}/crear-ot-rechazadas`, body);
-    return transformBackendToFrontend(response.data);
-  },
-
-  /**
-   * Get system statistics (active OTs, urgent, in process)
-   */
-  getEstadisticas: async () => {
-    const response = await apiClient.get('/ordenes/estadisticas');
+    if (tareaIds && tareaIds.length > 0) body.tarea_ids = tareaIds;
+    const response = await apiClient.post(`/ordenes/${workOrderId}/crear-ot-rechazadas`, body);
     return response.data;
   },
 };

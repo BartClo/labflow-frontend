@@ -43,11 +43,29 @@ const statusConfig = {
   }
 };
 
-export default function WorkflowStepModal({ step, onClose, onStatusUpdate }) {
+export default function WorkflowStepModal({ step, workOrder, onClose, onStatusUpdate }) {
   if (!step) return null;
 
   const config = statusConfig[step.status] || statusConfig.pendiente;
   const StatusIcon = config.icon;
+
+  // Extract task results from the work order data
+  const tareas = workOrder?.tasks || workOrder?.tareas || [];
+  const tareasConResultado = tareas.filter(t => {
+    const val = t.valor_medido ?? t.valorMedido;
+    return val !== null && val !== undefined && val !== '';
+  });
+
+  // Check if this step is a quality/validation step that would have results
+  const stepNameNorm = (step.step_name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const isResultsStep =
+    stepNameNorm.includes('control') ||
+    stepNameNorm.includes('calidad') ||
+    stepNameNorm.includes('validacion') ||
+    stepNameNorm.includes('resultado');
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -157,6 +175,87 @@ export default function WorkflowStepModal({ step, onClose, onStatusUpdate }) {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* Show task parameters and results for QC/validation steps */}
+              {tareas.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <FlaskConical className="w-4 h-4 text-purple-500" />
+                    <p className="text-sm text-gray-600 font-medium">Parámetros de la OT</p>
+                  </div>
+                  <div className="space-y-2">
+                    {tareas.map((tarea, idx) => {
+                      const nombre = tarea.nombre_analisis || tarea.nombreAnalisis || 'Análisis';
+                      const parametro = tarea.nombre_parametro || tarea.nombreParametro || nombre;
+                      const normativa = tarea.normativa || tarea.norma || tarea.codigo_norma || tarea.codigoNorma;
+                      const unidad = tarea.unidad_medida || tarea.unidadMedida || '';
+                      const valor = tarea.valor_medido ?? tarea.valorMedido;
+                      const cumple = tarea.cumple_normativa ?? tarea.cumpleNormativa;
+                      const obs = tarea.observaciones || '';
+                      const muestra = tarea.numero_muestra || tarea.numeroMuestra || '';
+                      const barcode = tarea.codigo_barras || tarea.codigoBarras || '';
+
+                      return (
+                        <div key={idx} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-semibold text-gray-900">{muestra}</span>
+                            {barcode && (
+                              <span className="text-xs text-gray-400 font-mono">[{barcode}]</span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <span className="text-gray-500">Parámetro:</span>{' '}
+                              <span className="font-medium text-gray-800">{parametro}</span>
+                            </div>
+                            {normativa && (
+                              <div>
+                                <span className="text-gray-500">Normativa:</span>{' '}
+                                <span className="font-medium text-gray-800">{normativa}</span>
+                              </div>
+                            )}
+                            {valor !== null && valor !== undefined && valor !== '' ? (
+                              <>
+                                <div>
+                                  <span className="text-gray-500">Valor medido:</span>{' '}
+                                  <span className="font-semibold text-gray-900">{valor}{unidad ? ` ${unidad}` : ''}</span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Cumple:</span>{' '}
+                                  {cumple === true && (
+                                    <Badge className="bg-green-100 text-green-800 text-xs">Sí</Badge>
+                                  )}
+                                  {cumple === false && (
+                                    <Badge className="bg-red-100 text-red-800 text-xs">No</Badge>
+                                  )}
+                                  {(cumple === null || cumple === undefined) && (
+                                    <span className="text-gray-400">—</span>
+                                  )}
+                                </div>
+                                {obs && (
+                                  <div className="col-span-2">
+                                    <span className="text-gray-500">Observaciones:</span>{' '}
+                                    <span className="text-gray-700">{obs}</span>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="col-span-2">
+                                <span className="text-gray-400 italic">Sin resultado registrado</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Fallback if no data at all */}
+              {!step.method_used && !(step.equipment_used?.length > 0) && tareas.length === 0 && (
+                <p className="text-sm text-gray-400 italic">Sin detalles técnicos disponibles</p>
               )}
             </div>
           </div>

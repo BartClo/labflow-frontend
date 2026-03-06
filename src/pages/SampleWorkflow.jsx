@@ -126,7 +126,31 @@ export default function SampleWorkflowPage() {
       const { steps, progress } = await WorkflowStep.completarEtapa(otId, notas);
       setWorkflowSteps(steps);
       setWorkflowProgress(progress);
-      
+
+      // If all steps are completed, explicitly mark the OT as COMPLETADA
+      const allDone =
+        (progress?.porcentaje_completado >= 100) ||
+        (steps.length > 0 && steps.every(s => s.status === 'completado'));
+      if (allDone) {
+        try {
+          await WorkOrder.updateStatus(otId, 'COMPLETADA');
+          console.log('✅ OT marcada como COMPLETADA');
+        } catch (statusError) {
+          console.warn('No se pudo actualizar el estado de la OT:', statusError);
+        }
+      } else {
+        // If workflow is in progress (some steps done, some pending), mark as EN_PROCESO
+        const hasInProgress = steps.some(s => s.status === 'en_progreso');
+        const hasCompleted = steps.some(s => s.status === 'completado');
+        if (hasInProgress || hasCompleted) {
+          try {
+            await WorkOrder.updateStatus(otId, 'EN_PROGRESO');
+          } catch (statusError) {
+            console.warn('No se pudo actualizar el estado a EN_PROCESO:', statusError);
+          }
+        }
+      }
+
       // Refresh order to get updated status
       const updatedOrder = await WorkOrder.getById(otId);
       setWorkOrder(updatedOrder);
@@ -149,9 +173,11 @@ export default function SampleWorkflowPage() {
   const updateStepStatus = async (stepId, newStatus, additionalData = {}) => {
     if (newStatus === 'completado') {
       await advanceWorkflowStage(additionalData.notas || null);
+    } else if (newStatus === 'cancelado') {
+      // OT was cancelled (all samples rejected) — reload to pick up new status
+      await loadWorkflowData();
     } else if (newStatus === 'en_progreso') {
       // Backend auto-starts the next step when the previous one completes.
-      // If user clicks "Iniciar" on the first pending step, just advance.
       await advanceWorkflowStage(null);
     }
   };
@@ -221,15 +247,35 @@ export default function SampleWorkflowPage() {
           </div>
           
           <div className="flex items-center gap-3">
-            <Badge 
-              className={`px-3 py-1 ${
-                workOrder?.status === 'completada' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-blue-100 text-blue-800'
-              }`}
-            >
-              {workOrder?.status?.replace(/_/g, ' ')}
-            </Badge>
+            {(() => {
+              // Determine display status from workflow steps when available
+              const allDone = workflowSteps.length > 0 && workflowSteps.every(s => s.status === 'completado');
+              const hasInProgress = workflowSteps.some(s => s.status === 'en_progreso');
+              const hasCompleted = workflowSteps.some(s => s.status === 'completado');
+              let displayStatus = workOrder?.status || 'generada';
+              if (workflowSteps.length > 0 && !allDone && (hasInProgress || hasCompleted)) {
+                displayStatus = 'en_analisis';
+              }
+              const statusLabels = {
+                generada: 'Generada',
+                en_analisis: 'En Análisis',
+                en_proceso: 'En Análisis',
+                completada: 'Completada',
+                cancelada: 'Cancelada',
+              };
+              const statusColors = {
+                generada: 'bg-gray-100 text-gray-800',
+                en_analisis: 'bg-blue-100 text-blue-800',
+                en_proceso: 'bg-blue-100 text-blue-800',
+                completada: 'bg-green-100 text-green-800',
+                cancelada: 'bg-red-100 text-red-800',
+              };
+              return (
+                <Badge className={`px-3 py-1 ${statusColors[displayStatus] || 'bg-gray-100 text-gray-800'}`}>
+                  {statusLabels[displayStatus] || displayStatus}
+                </Badge>
+              );
+            })()}
             <Button variant="outline" onClick={() => setShowInsights(true)}>
               <Lightbulb className="w-4 h-4 mr-2" />
               Insights
@@ -257,6 +303,7 @@ export default function SampleWorkflowPage() {
       {selectedStep && (
         <WorkflowStepModal
           step={selectedStep}
+          workOrder={workOrder}
           onClose={() => setSelectedStep(null)}
           onStatusUpdate={updateStepStatus}
         />
@@ -267,6 +314,7 @@ export default function SampleWorkflowPage() {
         <ActivityHistoryModal
           workOrderId={otId}
           workflowSteps={workflowSteps}
+          workOrder={workOrder}
           onClose={() => setShowInsights(false)}
         />
       )}

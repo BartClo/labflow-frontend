@@ -11,7 +11,10 @@ import {
   Building2,
   FileText,
   Clock,
-  Droplet
+  Droplet,
+  CheckCircle,
+  XCircle,
+  Barcode
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -55,8 +58,8 @@ const InfoCard = ({ icon: Icon, title, value, iconColor = "text-gray-500" }) => 
 export default function WorkOrderInfoModal({ workOrder, onClose }) {
   if (!workOrder) return null;
 
-  // Extraer información de las tareas (pueden venir como workOrder.tareas o workOrder.tasks)
-  const tareas = workOrder.tareas || workOrder.tasks || [];
+  // Use normalized tasks (workOrder.tasks) which have consistent field names
+  const tareas = workOrder.tasks || workOrder.tareas || [];
   const sampleNumbers = tareas
     .map(t => t.numero_muestra || t.numeroMuestra)
     .filter(Boolean)
@@ -85,11 +88,9 @@ export default function WorkOrderInfoModal({ workOrder, onClose }) {
                 <Badge className={`${statusConfig[workOrder.status?.toLowerCase()]?.color || 'bg-gray-100 text-gray-800'} border`}>
                   {statusConfig[workOrder.status?.toLowerCase()]?.label || workOrder.status}
                 </Badge>
-                {priority && priority !== 'normal' && priority !== 'baja' && (
-                  <Badge className={`${priorityConfig[priority]?.color || 'bg-gray-100 text-gray-800'} border`}>
-                    {priorityConfig[priority]?.label || priority}
-                  </Badge>
-                )}
+                <Badge className={`${priorityConfig[priority]?.color || 'bg-gray-100 text-gray-800'} border`}>
+                  {priorityConfig[priority]?.label || priority}
+                </Badge>
               </div>
             </div>
             <Button variant="ghost" size="icon" onClick={onClose}>
@@ -109,13 +110,32 @@ export default function WorkOrderInfoModal({ workOrder, onClose }) {
               iconColor="text-blue-600"
             />
 
-            {/* Código de barras (del primer task) */}
-            <InfoCard
-              icon={Building2}
-              title="Código de Barras"
-              value={tareas[0]?.codigo_barras || tareas[0]?.codigoBarras || 'N/A'}
-              iconColor="text-blue-600"
-            />
+            {/* Códigos de barras (todos los tasks) */}
+            <div className="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors md:col-span-2">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0">
+                  <Barcode className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-gray-600 font-medium mb-1">Códigos de Barras</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tareas.map((t, i) => {
+                      // Use codigo_barras if available, fallback to numero_muestra (which is what gets encoded as barcode)
+                      const bc = t.codigo_barras || t.codigoBarras || t.numero_muestra || t.numeroMuestra;
+                      if (!bc) return null;
+                      return (
+                        <Badge key={i} variant="outline" className="text-xs bg-white font-mono">
+                          {bc}
+                        </Badge>
+                      );
+                    })}
+                    {!tareas.some(t => t.codigo_barras || t.codigoBarras || t.numero_muestra || t.numeroMuestra) && (
+                      <span className="text-sm text-gray-500">N/A</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Total de muestras */}
             <InfoCard
@@ -196,19 +216,102 @@ export default function WorkOrderInfoModal({ workOrder, onClose }) {
                       {(tarea.codigo_barras || tarea.codigoBarras) && (
                         <span className="text-xs text-gray-400">[{tarea.codigo_barras || tarea.codigoBarras}]</span>
                       )}
-                      <Badge className={`text-xs ${
-                        (tarea.estado_analisis || tarea.estadoAnalisis) === 'COMPLETADO' ? 'bg-green-100 text-green-800' :
-                        (tarea.estado_analisis || tarea.estadoAnalisis) === 'EN_PROCESO' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {tarea.estado_analisis || tarea.estadoAnalisis || 'PENDIENTE'}
-                      </Badge>
+                            {
+                              (() => {
+                                const rawState = tarea.estado_analisis || tarea.estadoAnalisis || 'PENDIENTE';
+                                const normalized = String(rawState).toLowerCase();
+                                // Create a human-friendly label: replace underscores, lowercase, capitalize first letter
+                                const label = normalized.replace(/_/g, ' ');
+                                const labelFormatted = label.charAt(0).toUpperCase() + label.slice(1);
+
+                                let colorClass = 'bg-gray-100 text-gray-800';
+                                if (normalized.includes('complet')) colorClass = 'bg-green-100 text-green-800';
+                                else if (normalized.includes('proceso') || normalized.includes('ejecucion')) colorClass = 'bg-yellow-100 text-yellow-800';
+                                else if (normalized.includes('valid') || normalized.includes('finaliz')) colorClass = 'bg-green-100 text-green-800';
+                                else if (normalized.includes('cancel')) colorClass = 'bg-red-100 text-red-800';
+
+                                return (
+                                  <Badge className={`text-xs ${colorClass}`}>
+                                    {labelFormatted}
+                                  </Badge>
+                                );
+                              })()
+                            }
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+          {/* Resultados registrados (visible cuando la OT está completada/finalizada o hay resultados) */}
+          {(() => {
+            const tareasConResultado = tareas.filter(t => {
+              const val = t.valor_medido ?? t.valorMedido;
+              return val !== null && val !== undefined && val !== '';
+            });
+            if (tareasConResultado.length === 0) return null;
+            return (
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-indigo-600" />
+                  Resultados Registrados
+                </h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="text-left px-4 py-2 font-medium text-gray-700">Muestra</th>
+                        <th className="text-left px-4 py-2 font-medium text-gray-700">Análisis</th>
+                        <th className="text-right px-4 py-2 font-medium text-gray-700">Valor Medido</th>
+                        <th className="text-center px-4 py-2 font-medium text-gray-700">Cumple</th>
+                        <th className="text-left px-4 py-2 font-medium text-gray-700">Observaciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {tareasConResultado.map((tarea, idx) => {
+                        const valor = tarea.valor_medido ?? tarea.valorMedido;
+                        const cumple = tarea.cumple_normativa ?? tarea.cumpleNormativa;
+                        const obs = tarea.observaciones || '';
+                        const unidad = tarea.unidad_medida || tarea.unidadMedida || '';
+                        return (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 font-medium">
+                              {tarea.numero_muestra || tarea.numeroMuestra || 'N/A'}
+                            </td>
+                            <td className="px-4 py-2 text-gray-600">
+                              {tarea.nombre_analisis || tarea.nombreAnalisis || 'N/A'}
+                            </td>
+                            <td className="px-4 py-2 text-right font-mono font-semibold">
+                              {valor}{unidad ? ` ${unidad}` : ''}
+                            </td>
+                            <td className="px-4 py-2 text-center">
+                              {cumple === true && (
+                                <span className="inline-flex items-center gap-1 text-green-700">
+                                  <CheckCircle className="w-4 h-4" /> Sí
+                                </span>
+                              )}
+                              {cumple === false && (
+                                <span className="inline-flex items-center gap-1 text-red-700">
+                                  <XCircle className="w-4 h-4" /> No
+                                </span>
+                              )}
+                              {cumple === null || cumple === undefined ? (
+                                <span className="text-gray-400">—</span>
+                              ) : null}
+                            </td>
+                            <td className="px-4 py-2 text-gray-500 text-xs max-w-[200px] truncate">
+                              {obs || '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
     </div>

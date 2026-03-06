@@ -89,10 +89,11 @@ export const tasksService = {
    */
   updateResult: async (taskId, resultData) => {
     try {
+      console.warn('[DEBUG] PUT /tareas/' + taskId + '/resultado payload:', JSON.stringify(resultData));
       const response = await apiClient.put(`/tareas/${taskId}/resultado`, resultData);
       return response.data;
     } catch (error) {
-      console.error('❌ Error updating task result:', error);
+      console.error('❌ Error updating task result:', error?.response?.data || error.message);
       throw error;
     }
   },
@@ -144,7 +145,21 @@ export const tasksService = {
   ,
 
   /**
-   * Rechazar una muestra (marca la muestra como RECHAZADA)
+   * Rechazar una tarea (MuestraAnalisis) usando su id_muestra_analisis
+   * @param {UUID} tareaId - id_muestra_analisis
+   */
+  rechazarTarea: async (tareaId) => {
+    try {
+      const response = await apiClient.post(`/tareas/${tareaId}/rechazar`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error rejecting task:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Rechazar una muestra por su id_muestra (Muestra entity)
    * @param {UUID} muestraId
    */
   rechazarMuestra: async (muestraId) => {

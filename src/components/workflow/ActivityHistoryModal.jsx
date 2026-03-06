@@ -12,15 +12,30 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
-  Lightbulb
+  Lightbulb,
+  XCircle
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import workOrdersService from '@/api/services/workOrders';
+
+// Normalise step name for comparison (strip accents, lowercase)
+const norm = (name) =>
+  (name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const isQCStepName = (name) => {
+  const n = norm(name);
+  return n.includes('control de calidad') || n === 'calidad';
+};
+const isValidacionStepName = (name) => {
+  const n = norm(name);
+  return n.includes('validacion') || n.includes('validar resultado');
+};
 
 const activityIcons = {
   completado: CheckCircle,
   en_progreso: Play,
-  pendiente: Clock
+  pendiente: Clock,
+  fallido: XCircle,
 };
 
 const activityColors = {
@@ -41,11 +56,21 @@ const activityColors = {
     bg: "bg-gray-50",
     border: "border-gray-200",
     cardBg: "bg-gray-50"
+  },
+  fallido: {
+    icon: "text-red-600",
+    bg: "bg-red-50",
+    border: "border-red-300",
+    cardBg: "bg-red-50"
   }
 };
 
-export default function ActivityHistoryModal({ workOrderId, workflowSteps, onClose }) {
+export default function ActivityHistoryModal({ workOrderId, workflowSteps, workOrder, onClose }) {
   const scrollContainerRef = React.useRef(null);
+
+  const otId = workOrderId || workOrder?.id || workOrder?.idOrdenTrabajo;
+  const qcFailed = otId ? workOrdersService.isQCFailed(otId) : false;
+  const otCancelled = workOrder?.status === 'cancelada';
 
   // Crear historial basado en los pasos del workflow
   const activities = workflowSteps
@@ -54,6 +79,7 @@ export default function ActivityHistoryModal({ workOrderId, workflowSteps, onClo
       const activities = [];
       
       if (step.started_at) {
+        // Started entries always show as blue (en_progreso) regardless of outcome
         activities.push({
           id: `${step.id}-started`,
           type: 'en_progreso',
@@ -66,12 +92,26 @@ export default function ActivityHistoryModal({ workOrderId, workflowSteps, onClo
       }
       
       if (step.completed_at) {
+        // Override completed type for QC-failed and Validación-rejected steps
+        const isQCFail = qcFailed && isQCStepName(step.step_name);
+        const isValidationReject = otCancelled && isValidacionStepName(step.step_name);
+        const completedType = (isQCFail || isValidationReject) ? 'fallido' : 'completado';
+        const completedTitle = isQCFail
+          ? 'Control de calidad fallido'
+          : isValidationReject
+          ? 'Rechazada'
+          : 'Completado';
+        const completedDesc = isQCFail
+          ? 'Valores fuera de los límites normativos'
+          : isValidationReject
+          ? 'Muestra rechazada — OT cancelada'
+          : 'Paso completado exitosamente';
         activities.push({
           id: `${step.id}-completed`, 
-          type: 'completado',
-          title: 'Completado',
+          type: completedType,
+          title: completedTitle,
           stepName: step.step_name,
-          description: `Paso completado exitosamente`,
+          description: completedDesc,
           timestamp: step.completed_at,
           user: step.assigned_to
         });
@@ -162,6 +202,7 @@ export default function ActivityHistoryModal({ workOrderId, workflowSteps, onClo
                           <div>
                             <Badge className={`mb-2 ${
                               activity.type === 'completado' ? 'bg-green-100 text-green-800' :
+                              activity.type === 'fallido' ? 'bg-red-100 text-red-800' :
                               activity.type === 'en_progreso' ? 'bg-blue-100 text-blue-800' :
                               'bg-gray-100 text-gray-800'
                             }`}>

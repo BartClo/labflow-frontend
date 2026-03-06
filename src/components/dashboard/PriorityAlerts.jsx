@@ -57,7 +57,7 @@ export default function PriorityAlerts({ urgentOrders, isLoading }) {
             </div>
           </div>
         ) : (
-          <div className="space-y-2 flex-1 flex flex-col justify-around">
+          <div className="space-y-2">
             {urgentOrders.slice(0, 4).map((order) => {
               const config = priorityConfig[order.priority];
               const Icon = config ? config.icon : AlertTriangle;
@@ -88,14 +88,6 @@ export default function PriorityAlerts({ urgentOrders, isLoading }) {
                       </p>
                     </div>
                   </div>
-                  
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
                 </div>
               );
             })}

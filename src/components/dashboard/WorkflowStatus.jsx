@@ -10,8 +10,8 @@ import {
 
 const workflowSteps = [
   { 
-    key: 'recibida', 
-    label: 'Recibidas', 
+    key: 'generada', 
+    label: 'Generadas', 
     icon: FlaskConical, 
     color: 'text-blue-600',
     bg: 'bg-blue-50',
@@ -65,7 +65,7 @@ export default function WorkflowStatus({ workflowStats, isLoading }) {
     <Card className="border-0 shadow-lg h-full flex flex-col">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg text-gray-900">Estado del Workflow</CardTitle>
-        <p className="text-xs text-gray-600">Distribución de muestras por etapa de proceso</p>
+        <p className="text-xs text-gray-600">Distribución de OTs por etapa de proceso</p>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col justify-around">
         {workflowSteps.map((step) => {
@@ -82,7 +82,7 @@ export default function WorkflowStatus({ workflowStats, isLoading }) {
                   <span className="font-medium text-sm text-gray-900">{step.label}</span>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-sm text-gray-500">{count} muestras</span>
+                  <span className="text-sm text-gray-500">{count} OT{count !== 1 ? 's' : ''}</span>
                   <span className="text-base font-semibold text-gray-900 w-12 text-right">
                     {percentage.toFixed(0)}%
                   </span>

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { samplesService } from "@/api/services";
 
 const sampleTypeIcons = {
   agua: "💧",
@@ -27,6 +28,20 @@ const priorityConfig = {
 };
 
 export default function SampleInfo({ sample }) {
+  const [priority, setPriority] = useState(sample?.priority || 'normal');
+
+  useEffect(() => {
+    let mounted = true;
+    // If the sample lacks an explicit priority, try the new endpoint
+    if ((!sample?.priority || sample.priority === 'normal') && sample?.id) {
+      samplesService.getPriority(sample.id).then(p => {
+        if (mounted && p) setPriority(p);
+      }).catch(() => {});
+    } else if (sample?.priority) {
+      setPriority(sample.priority);
+    }
+    return () => { mounted = false; };
+  }, [sample?.id, sample?.priority]);
   return (
     <Card>
       <CardHeader>
@@ -83,11 +98,11 @@ export default function SampleInfo({ sample }) {
         </div>
 
         {/* Prioridad */}
-        {sample.priority && sample.priority !== 'normal' && (
+        {priority && priority !== 'normal' && (
           <div className="pt-2">
-            <Badge className={`${priorityConfig[sample.priority]?.color || priorityConfig.normal.color} border`}>
+            <Badge className={`${priorityConfig[priority]?.color || priorityConfig.normal.color} border`}>
               <Tag className="w-3 h-3 mr-1" />
-              {priorityConfig[sample.priority]?.label || sample.priority}
+              {priorityConfig[priority]?.label || priority}
             </Badge>
           </div>
         )}
