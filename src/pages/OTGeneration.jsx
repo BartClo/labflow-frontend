@@ -308,6 +308,11 @@ export default function OTGenerationPage() {
 
   const generateWorkOrder = async (technicianId, priority) => {
     if (selectedSamples.length === 0) return;
+    if (!technicianId) {
+      alert("Por favor, selecciona un técnico asignado antes de generar la OT.");
+      return;
+    }
+    
     setShowGenerateDialog(false);
     setIsGenerating(true);
     try {
@@ -473,6 +478,22 @@ export default function OTGenerationPage() {
       setShowDeleteConfirm(false);
       setDeletingOrderId(null);
       alert(`No se pudo eliminar la OT: ${serverMsg}`);
+    }
+  };
+
+  const handleRecreateWorkOrder = async (order) => {
+    if (!window.confirm("¿Volver a hacer una Orden de Trabajo con las muestras rechazadas/canceladas?")) return;
+    try {
+      await workOrdersService.crearOTRechazadas(order.id, {
+        notas: "Recreada a partir de muestras rechazadas"
+      });
+      alert("Nueva Orden de Trabajo creada exitoamente.");
+      loadData();
+      setActiveTab("list");
+    } catch (error) {
+      console.error("Error recreating work order:", error);
+      const serverMsg = error?.response?.data?.message || error?.response?.data?.error || error?.serverMessage || error.message;
+      alert(`No se pudo volver a generar la OT: ${serverMsg}`);
     }
   };
 
@@ -766,6 +787,12 @@ export default function OTGenerationPage() {
                           </div>
                           
                           <div className="flex items-center gap-2">
+                            {(order.has_rejected || isCancelled) && (
+                              <Button variant="outline" className="text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => handleRecreateWorkOrder(order)}>
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Volver a hacer
+                              </Button>
+                            )}
                             {isCancelled && (
                               <Button variant="destructive" size="icon" onClick={() => handleDeleteWorkOrder(order.id)}>
                                 <Trash2 className="w-4 h-4" />

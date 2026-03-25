@@ -137,9 +137,9 @@ const transformWorkOrder = (raw) => {
       nombre_analisis: t.nombre_analisis || t.nombreAnalisis,
       codigo_barras: t.codigo_barras || t.codigoBarras || t.barcode,
       estado_analisis: t.estado_analisis || t.estadoAnalisis,
-      limite_minimo: t.limite_minimo || t.limiteMinimo || t.valor_minimo || t.valorMinimo,
-      limite_maximo: t.limite_maximo || t.limiteMaximo || t.valor_maximo || t.valorMaximo,
-      limite_deteccion: t.limite_deteccion || t.limiteDeteccion || t.limite_minimo || t.limiteMinimo,
+      limite_minimo: t.limite_minimo || t.limiteMinimo || t.valor_minimo || t.valorMinimo || t.limite_minimo_normativa || t.limiteMinimoNormativa || t.min_limit || t.min_standard_limit,
+      limite_maximo: t.limite_maximo || t.limiteMaximo || t.valor_maximo || t.valorMaximo || t.limite_maximo_normativa || t.limiteMaximoNormativa || t.max_limit || t.max_standard_limit,
+      limite_deteccion: t.limite_deteccion || t.limiteDeteccion || t.limite_minimo || t.limiteMinimo || t.limite_minimo_normativa || t.limiteMinimoNormativa,
       unidad_medida: t.unidad_medida || t.unidadMedida,
       nombre_parametro: t.nombre_parametro || t.nombreParametro || t.nombre_analisis || t.nombreAnalisis,
       normativa: t.normativa || t.norma || t.codigo_norma || t.codigoNorma,
@@ -204,15 +204,24 @@ export const workOrdersService = {
    * The backend expects { tarea_ids, tecnico_asignado_id, prioridad }
    */
   create: async (workOrderData) => {
+    let mappedPriority = (workOrderData.priority || 'media').toUpperCase();
+    if (mappedPriority === 'NORMAL') mappedPriority = 'MEDIA';
+
     const backendData = {
       tarea_ids:           workOrderData.tarea_ids || [],
       tecnico_asignado_id: workOrderData.tecnico_asignado_id || null,
-      prioridad:           (workOrderData.priority || 'normal').toUpperCase(),
+      prioridad:           mappedPriority,
     };
 
     if (!backendData.tarea_ids || backendData.tarea_ids.length === 0) {
       throw new Error('No se encontraron tareas para crear la orden de trabajo.');
     }
+    
+    // Quick validation before sending to avoid 400 Bad Request
+    if (!backendData.tecnico_asignado_id) {
+      throw new Error('Debe asignar un técnico para crear la orden de trabajo.');
+    }
+
     const response = await apiClient.post('/ordenes', backendData);
     const result = transformWorkOrder(response.data);
     // Backend doesn't store/return prioridad — persist it locally so the badge stays correct
@@ -300,29 +309,15 @@ export const workOrdersService = {
     };
     const key = (status || '').toLowerCase();
     const backendStatus = statusToBackend[key] || status?.toUpperCase();
-    const body = { estado: backendStatus };
 
-    // Try action-based POST first (common in Spring Boot), then fall back to PUT
-    const attempts = [
-      () => apiClient.post(`/ordenes/${id}/estado`, body),
-      () => apiClient.put(`/ordenes/${id}/estado`, body),
-      () => apiClient.patch(`/ordenes/${id}/estado`, body),
-    ];
-    let lastErr;
-    for (const attempt of attempts) {
-      try {
-        const response = await attempt();
-        return transformWorkOrder(response.data);
-      } catch (err) {
-        lastErr = err;
-        const msg = err?.response?.data?.message || err?.response?.data?.error || '';
-        // Only retry if it's an HTTP-method-not-supported error
-        const isMethodError = (err?.response?.status === 405 || err?.response?.status === 500) &&
-          (msg.toLowerCase().includes('not supported') || msg.toLowerCase().includes('method'));
-        if (!isMethodError) throw err;
-      }
+    // The backend expects 'estado' as a ReqParam: PUT /api/ordenes/{id}/estado?estado=X
+    try {
+      const resp = await apiClient.put(`/ordenes/${id}/estado?estado=${backendStatus}`);
+      return transformWorkOrder(resp.data);
+    } catch (err) {
+      console.warn("Failed to update status:", err);
+      throw err;
     }
-    throw lastErr;
   },
 
   /**

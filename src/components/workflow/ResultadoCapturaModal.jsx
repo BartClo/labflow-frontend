@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CheckCircle, XCircle, AlertTriangle, Scan, Save, FlaskConical, SkipForward, AlertCircle } from 'lucide-react';
 import tasksService from '@/api/services/tasks';
+import { analysisService } from '@/api/services/analysis';
 import { WorkOrder } from '@/api/entities';
 import workOrdersService from '@/api/services/workOrders';
 
@@ -45,6 +46,9 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [savedCount, setSavedCount] = useState(0);
+  const [processedIds, setProcessedIds] = useState(new Set());
+  const [hasQCFailureLocal, setHasQCFailureLocal] = useState(false);
+  const [hasAutoRejectLocal, setHasAutoRejectLocal] = useState(false);
   const [showRejectDialog, setShowRejectDialog] = useState(false);
   const [rejectNotes, setRejectNotes] = useState('');
   const [rejectLoading, setRejectLoading] = useState(false);
@@ -56,9 +60,13 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   const pendingMuestras = useMemo(() => {
     return muestrasOT.filter(m => {
       const estado = (m.estado_analisis || m.estadoAnalisis || '').toUpperCase();
-      return estado !== 'COMPLETADO' && estado !== 'VALIDADO';
+      // If we are in "Validación de Resultados", we need to see "COMPLETADO" tasks to validate them.
+      if (isValidacionStep(currentStepName)) {
+        return estado !== 'VALIDADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO';
+      }
+      return estado !== 'COMPLETADO' && estado !== 'VALIDADO' && estado !== 'RECHAZADO' && estado !== 'CANCELADO';
     });
-  }, [muestrasOT]);
+  }, [muestrasOT, currentStepName]);
 
   // Current sample based on index
   const currentMuestra = pendingMuestras[currentIndex] || null;
@@ -76,22 +84,21 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     if (open) {
       setCurrentIndex(0);
       setSavedCount(0);
+      setProcessedIds(new Set());
       resetFormFields();
-      // Auto-select first pending sample
-      if (pendingMuestras.length > 0) {
-        autoSelectMuestra(pendingMuestras[0]);
-      }
+      // No seleccionamos automáticamente para forzar escaneo
+      setTimeout(() => codigoRef.current?.focus(), 120);
     } else {
       fullReset();
     }
   }, [open]);
 
-  // When currentIndex changes, auto-select the new sample
+  // When currentIndex changes manually (from skip), auto-select only if it was explicit
+  // But generally, we want the user to scan.
   useEffect(() => {
-    if (open && currentMuestra) {
-      resetFormFields();
-      autoSelectMuestra(currentMuestra);
-    }
+    // We'll leave it intentionally empty and remove auto selection here.
+    // The previous logic auto-selected on currentIndex change.
+    // Now we rely on validarCodigo to select it.
   }, [currentIndex]);
 
   const resetFormFields = () => {
@@ -109,6 +116,9 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     resetFormFields();
     setCurrentIndex(0);
     setSavedCount(0);
+    setProcessedIds(new Set());
+    setHasQCFailureLocal(false);
+    setHasAutoRejectLocal(false);
     setShowRejectDialog(false);
     setRejectNotes('');
     setRejectLoading(false);
@@ -119,6 +129,15 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     console.warn('[DEBUG] Muestra seleccionada:', JSON.stringify(muestra, null, 2));
     const barcode = muestra.codigo_barras || muestra.codigoBarras || '';
     setCodigoBarras(barcode);
+    
+    // Auto-populate valorMedido if it exists so the user can easily validate it
+    const existingValue = muestra.valor_medido ?? muestra.valorMedido;
+    if (existingValue !== undefined && existingValue !== null) {
+      setValorMedido(existingValue.toString());
+    } else {
+      setValorMedido('');
+    }
+
     setTareaInfo({
       id_muestra_analisis: muestra.id_muestra_analisis || muestra.idMuestraAnalisis,
       id_muestra: muestra.id_muestra || muestra.idMuestra || null,
@@ -142,6 +161,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     );
     if (idx >= 0) {
       setCurrentIndex(idx);
+      autoSelectMuestra(pendingMuestras[idx]);
     }
   };
 
@@ -178,6 +198,40 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     setLoading(false);
   };
 
+  // Fetch missing limits from analysis template if the backend sends null in tasks
+  useEffect(() => {
+    const fetchLimites = async () => {
+      if (tareaInfo && tareaInfo.nombre_analisis && tareaInfo.limite_maximo === null && tareaInfo.limite_minimo === null && tareaInfo.limite_deteccion === null) {
+        try {
+          const data = await analysisService.getAll();
+          const match = data.find(a => 
+            a.nombreAnalisis.trim().toLowerCase() === tareaInfo.nombre_analisis.trim().toLowerCase()
+          );
+          if (match && match.parametrosMedir) {
+            // Some keys are dynamic like "para" or the parameter name. Try to extract from the first value.
+            const paramsKey = Object.keys(match.parametrosMedir)[0];
+            if (paramsKey) {
+              const params = match.parametrosMedir[paramsKey];
+              setTareaInfo(prev => {
+                if (!prev || prev.id_muestra_analisis !== tareaInfo.id_muestra_analisis) return prev;
+                return {
+                  ...prev,
+                  limite_minimo: prev.limite_minimo ?? params.limiteMinimo ?? params.limiteDeteccion,
+                  limite_maximo: prev.limite_maximo ?? params.limiteMaximo,
+                  limite_deteccion: prev.limite_deteccion ?? params.limiteDeteccion ?? params.limiteMinimo,
+                  unidad_medida: prev.unidad_medida ?? params.unidad
+                };
+              });
+            }
+          }
+        } catch(e) {
+          console.error("Error fetching analysis limits fallback", e);
+        }
+      }
+    };
+    fetchLimites();
+  }, [tareaInfo?.id_muestra_analisis]);
+
   // Traffic-light: validate value against limits
   useEffect(() => {
     if (!tareaInfo || valorMedido === '') {
@@ -187,14 +241,24 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     const valor = parseFloat(valorMedido);
     if (Number.isNaN(valor)) { setValidacionEstado(null); return; }
 
-    const limiteMin = tareaInfo.limite_minimo ?? null;
-    const limiteMax = tareaInfo.limite_maximo ?? null;
+    let limiteMin = tareaInfo.limite_minimo ?? tareaInfo.limite_deteccion ?? null;
+    let limiteMax = tareaInfo.limite_maximo ?? null;
+
+    if (limiteMin === '') limiteMin = null;
+    if (limiteMax === '') limiteMax = null;
 
     if (limiteMin !== null && limiteMax !== null) {
       const min = parseFloat(limiteMin);
       const max = parseFloat(limiteMax);
       if (!Number.isNaN(min) && !Number.isNaN(max)) {
         setValidacionEstado(valor >= min && valor <= max ? 'valido' : 'invalido');
+        return;
+      }
+    }
+    if (limiteMin !== null) {
+      const min = parseFloat(limiteMin);
+      if (!Number.isNaN(min)) {
+        setValidacionEstado(valor >= min ? 'valido' : 'invalido');
         return;
       }
     }
@@ -209,119 +273,206 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   }, [valorMedido, tareaInfo]);
 
   const handleGuardar = async () => {
-    if (!tareaInfo || valorMedido === '') {
-      setError('Complete el código de barras y el valor medido');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setSuccessMsg(null);
-    try {
-      const taskId = tareaInfo.id_muestra_analisis ?? tareaInfo.idMuestraAnalisis;
-      // Calculate cumple_normativa based on validation state or limits
-      let cumpleNormativa = null;
-      if (validacionEstado === 'valido') {
-        cumpleNormativa = true;
-      } else if (validacionEstado === 'invalido') {
-        cumpleNormativa = false;
-      } else {
-        // If no explicit validation state, check against limits if available
-        const valor = parseFloat(valorMedido);
-        const min = parseFloat(tareaInfo?.limite_minimo);
-        const max = parseFloat(tareaInfo?.limite_maximo);
-        if (!isNaN(valor)) {
-          if (!isNaN(min) && !isNaN(max)) {
-            cumpleNormativa = valor >= min && valor <= max;
-          } else if (!isNaN(max)) {
-            cumpleNormativa = valor <= max;
-          } else if (!isNaN(min)) {
-            cumpleNormativa = valor >= min;
-          } else {
-            // No limits available, assume compliant
-            cumpleNormativa = true;
-          }
-        }
-      }
-      // Backend expects parametros as a Map<String, ParametroResultadoDTO> keyed by parameter name
-      const parametroKey = tareaInfo.nombre_parametro || tareaInfo.nombre_analisis;
-      const payload = {
-        parametros: {
-          [parametroKey]: {
-            valor_medido: parseFloat(valorMedido),
-            cumple_normativa: cumpleNormativa,
-            observaciones: observaciones || null,
-          },
-        },
-      };
-      console.warn('[DEBUG] Guardando resultado:', { taskId, payload });
-      const saved = await tasksService.updateResult(taskId, payload);
-
-      // Also persist valor_medido via the simpler guardarResultado endpoint
-      // so the value is stored directly on the task record and returned by getById
-      try {
-        await tasksService.guardarResultado({
-          id_muestra_analisis: taskId,
-          codigo_barras: tareaInfo.codigo_barras || tareaInfo.numero_muestra || '',
-          valor_medido: parseFloat(valorMedido),
-          observaciones: observaciones || null,
-        });
-      } catch (fallbackErr) {
-        // Non-critical: the primary updateResult already succeeded
-        console.warn('[DEBUG] guardarResultado fallback failed (non-critical):', fallbackErr?.response?.data || fallbackErr.message);
-      }
-
-      const newSavedCount = savedCount + 1;
-      setSavedCount(newSavedCount);
-
-      // Determine if this is a QC failure (Control de Calidad step + value out of range)
-      const qcFailed = isQCStep(currentStepName) && validacionEstado === 'invalido';
-
-      if (qcFailed) {
-        // QC failed — notify parent so it advances workflow but marks step as fallido
-        onResultadoGuardado && onResultadoGuardado({ ...saved, qc_failed: true });
-        setSuccessMsg(null);
-        // Close modal — parent will advance to Validación de Resultados
-        setTimeout(() => {
-          onOpenChange(false);
-          fullReset();
-        }, 300);
+      if (!tareaInfo || valorMedido === '') {
+        setError('Complete el código de barras y el valor medido');
         return;
       }
+      setLoading(true);
+      setError(null);
+      setSuccessMsg(null);
+      try {
+        const taskId = tareaInfo.id_muestra_analisis ?? tareaInfo.idMuestraAnalisis;
+        // Calculate cumple_normativa based on validation state or limits
+        let cumpleNormativa = null;
+        if (validacionEstado === 'valido') {
+          cumpleNormativa = true;
+        } else if (validacionEstado === 'invalido') {
+          cumpleNormativa = false;
+        } else {
+          // If no explicit validation state, check against limits if available
+          const valor = parseFloat(valorMedido);
+          const min = parseFloat(tareaInfo?.limite_minimo ?? tareaInfo?.limite_deteccion);
+          const max = parseFloat(tareaInfo?.limite_maximo);
+          if (!isNaN(valor)) {
+            if (!isNaN(min) && !isNaN(max)) {
+              cumpleNormativa = valor >= min && valor <= max;
+            } else if (!isNaN(max)) {
+              cumpleNormativa = valor <= max;
+            } else if (!isNaN(min)) {
+              cumpleNormativa = valor >= min;
+            } else {
+              // No limits available, assume compliant
+              cumpleNormativa = true;
+            }
+          }
+        }
+        // Backend expects parametros as a Map<String, ParametroResultadoDTO> keyed by parameter name
+        const parametroKey = tareaInfo.nombre_parametro || tareaInfo.nombre_analisis;
+        const payload = {
+          parametros: {
+            [parametroKey]: {
+              valor: parseFloat(valorMedido),
+              valor_medido: parseFloat(valorMedido), // para compatibilidad
+              cumple_normativa: cumpleNormativa,
+              observaciones: observaciones || null,
+            },
+          },
+        };
+        console.warn('[DEBUG] Guardando resultado:', { taskId, payload });
+        const saved = await tasksService.updateResult(taskId, payload);
 
-      onResultadoGuardado && onResultadoGuardado(saved);
+        // Also persist valor_medido via the simpler guardarResultado endpoint
+        // so the value is stored directly on the task record and returned by getById
+        try {
+          await tasksService.guardarResultado({
+            id_muestra_analisis: taskId,
+            codigo_barras: tareaInfo.codigo_barras || tareaInfo.numero_muestra || '',
+            valor_medido: parseFloat(valorMedido),
+            observaciones: observaciones || null,
+          });
+        } catch (fallbackErr) {
+          // Non-critical: the primary updateResult already succeeded
+          console.warn('[DEBUG] guardarResultado fallback failed (non-critical):', fallbackErr?.response?.data || fallbackErr.message);
+        }
 
-      const nextIndex = currentIndex + 1;
-      if (nextIndex < totalMuestras) {
-        setSuccessMsg(`✓ Resultado guardado (${newSavedCount}/${totalMuestras}). Avanzando...`);
-        setTimeout(() => {
-          setCurrentIndex(nextIndex);
-          setSuccessMsg(null);
-        }, 800);
-      } else {
-        setSuccessMsg(`✓ ¡Todos los resultados guardados! (${newSavedCount} muestras procesadas)`);
-        setTimeout(() => {
-          onOpenChange(false);
-          fullReset();
-        }, 1500);
+        const newSavedCount = savedCount + 1;
+        setSavedCount(newSavedCount);
+        const newProcessedIds = new Set(processedIds);
+        newProcessedIds.add(taskId);
+        setProcessedIds(newProcessedIds);
+        
+        const isQC = isQCStep(currentStepName);
+        const isComplete = newProcessedIds.size >= totalMuestras;
+
+        const getNextIndex = () => {
+          for (let i = 1; i <= totalMuestras; i++) {
+            const checkIdx = (currentIndex + i) % totalMuestras;
+            const m = pendingMuestras[checkIdx];
+            if (m && !newProcessedIds.has(m.id_muestra_analisis || m.idMuestraAnalisis)) {
+               return checkIdx;
+            }
+          }
+          return currentIndex + 1;
+        };
+
+        if (cumpleNormativa === false) {
+          // Auto-rechazo si el valor está fuera de norma
+          try {
+            await tasksService.rechazarTarea(taskId);
+          } catch (rejectErr) {
+            if (tareaInfo.id_muestra) {
+              try { await tasksService.rechazarMuestra(tareaInfo.id_muestra); } catch (e) { }
+            }
+          }
+
+          if (isQC) setHasQCFailureLocal(true);
+
+          if (!isComplete) {
+            const nextIdx = getNextIndex();
+            setSuccessMsg(`❌ Muestra rechazada. Escanee la siguiente muestra...`);
+            setTimeout(() => {
+              setCurrentIndex(nextIdx);
+              resetFormFields();
+              setSuccessMsg(null);
+              setTimeout(() => codigoRef.current?.focus(), 100);
+            }, 1500);
+          } else {
+            // Check accumulated QC failure
+            const finalQCFailed = isQC || hasQCFailureLocal;
+            
+            onResultadoGuardado && onResultadoGuardado({
+              ...saved,
+              action: 'rejected',
+              auto_rejected: true,
+              qc_failed: finalQCFailed,
+              tarea_id: taskId,
+              numero_muestra: tareaInfo.numero_muestra,
+            });
+            setSuccessMsg(finalQCFailed 
+              ? `❌ Control de Calidad fallido. Todas procesadas.` 
+              : `❌ Muestra rechazada. Todas procesadas.`);
+              
+            setTimeout(() => {
+              onOpenChange(false);
+              fullReset();
+            }, 1500);
+          }
+          return;
+        }
+
+        // Determine if this is a QC failure (Control de Calidad step + value out of range)
+        const qcFailed = isQC && validacionEstado === 'invalido';
+        let currentQCFailed = false;
+
+        if (qcFailed) {
+            setHasQCFailureLocal(true);
+            currentQCFailed = true;
+        }
+
+        if (!isComplete) {
+          const nextIdx = getNextIndex();
+          if (currentQCFailed) {
+              setSuccessMsg(`⚠️ Control de calidad fallido (${newSavedCount}/${totalMuestras}). Escanee la siguiente muestra...`);
+          } else {
+              setSuccessMsg(`✓ Resultado guardado (${newSavedCount}/${totalMuestras}). Escanee la siguiente muestra...`);
+          }
+          setTimeout(() => {
+            setCurrentIndex(nextIdx);
+            resetFormFields();
+            setSuccessMsg(null);
+            setTimeout(() => codigoRef.current?.focus(), 100);
+          }, 1500);
+        } else {
+          const finalQCFailed = hasQCFailureLocal || currentQCFailed;
+
+          if (finalQCFailed) {
+             onResultadoGuardado && onResultadoGuardado({ ...saved, qc_failed: true });
+             setSuccessMsg('✓ Procesado completo. Control de Calidad fallido.');
+          } else {
+             onResultadoGuardado && onResultadoGuardado(saved);
+             setSuccessMsg(`✓ ¡Todos los resultados guardados! (${newSavedCount} muestras procesadas)`);
+          }
+          setTimeout(() => {
+            onOpenChange(false);
+            fullReset();
+          }, 1500);
+        }
+      } catch (err) {
+        // Log detailed error for debugging
+        console.error('[DEBUG] Error guardando resultado:', err?.response?.data);
+        // Extract detailed validation errors if available
+        const errorData = err?.response?.data;
+        let errorMsg = errorData?.mensaje || errorData?.message || 'Error al guardar el resultado';
+        if (errorData?.errors) {
+          const fieldErrors = Object.entries(errorData.errors).map(([field, msg]) => `${field}: ${msg}`).join(', ');
+          errorMsg = `${errorMsg} (${fieldErrors})`;
+        }
+        setError(errorMsg);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      // Log detailed error for debugging
-      console.error('[DEBUG] Error guardando resultado:', err?.response?.data);
-      // Extract detailed validation errors if available
-      const errorData = err?.response?.data;
-      let errorMsg = errorData?.mensaje || errorData?.message || 'Error al guardar el resultado';
-      if (errorData?.errors) {
-        const fieldErrors = Object.entries(errorData.errors).map(([field, msg]) => `${field}: ${msg}`).join(', ');
-        errorMsg = `${errorMsg} (${fieldErrors})`;
-      }
-      setError(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+    
 
   const handleSkip = () => {
-    if (currentIndex + 1 < totalMuestras) setCurrentIndex(currentIndex + 1);
+    let nextIdx = -1;
+    for (let i = 1; i < totalMuestras; i++) {
+      const checkIdx = (currentIndex + i) % totalMuestras;
+      const m = pendingMuestras[checkIdx];
+      if (m && !processedIds.has(m.id_muestra_analisis || m.idMuestraAnalisis)) {
+        nextIdx = checkIdx;
+        break;
+      }
+    }
+    if (nextIdx !== -1) {
+      setCurrentIndex(nextIdx);
+      resetFormFields();
+      setTimeout(() => codigoRef.current?.focus(), 100);
+    } else if (currentIndex + 1 < totalMuestras) {
+      setCurrentIndex(currentIndex + 1);
+      resetFormFields();
+      setTimeout(() => codigoRef.current?.focus(), 100);
+    }
   };
 
   const handleRejectSample = () => {
@@ -338,12 +489,29 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
       const inQC = isQCStep(currentStepName);
       const inValidacion = isValidacionStep(currentStepName);
 
+      const newProcessedIds = new Set(processedIds);
+      newProcessedIds.add(taskId);
+      setProcessedIds(newProcessedIds);
+      const isComplete = newProcessedIds.size >= totalMuestras;
+
+      const getNextIndex = () => {
+         for (let i = 1; i <= totalMuestras; i++) {
+           const checkIdx = (currentIndex + i) % totalMuestras;
+           const m = pendingMuestras[checkIdx];
+           if (m && !newProcessedIds.has(m.id_muestra_analisis || m.idMuestraAnalisis)) {
+              return checkIdx;
+           }
+         }
+         return currentIndex + 1;
+      };
+
       // 1. Guardar resultado con cumple_normativa=false si hay valor medido
       if (valorMedido !== '') {
         const parametroKey = tareaInfo.nombre_parametro || tareaInfo.nombre_analisis;
         const payload = {
           parametros: {
             [parametroKey]: {
+              valor: parseFloat(valorMedido),
               valor_medido: parseFloat(valorMedido),
               cumple_normativa: false,
               observaciones: rejectNotes || `Rechazada: valor fuera de normativa (${valorMedido})`,
@@ -359,22 +527,35 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
 
       // ------- QC STEP: mark as failed, advance to Validación, OT stays active -------
       if (inQC) {
-        setSuccessMsg(`✓ Control de calidad fallido — avanzando a Validación de Resultados`);
-        setShowRejectDialog(false);
-        setRejectNotes('');
+          setHasQCFailureLocal(true);
+          setSuccessMsg(`⚠️ Muestra rechazada (QC). Escanee la siguiente...`);
+          setShowRejectDialog(false);
+          setRejectNotes('');
 
-        // Signal QC failure to parent (advance step, mark QC failed)
-        onResultadoGuardado && onResultadoGuardado({
-          action: 'rejected',
-          qc_failed: true,
-          tarea_id: taskId,
-          numero_muestra: tareaInfo.numero_muestra,
-        });
+          if (!isComplete) {
+              const nextIdx = getNextIndex();
+              setTimeout(() => {
+                setCurrentIndex(nextIdx);
+                resetFormFields();
+                setTimeout(() => codigoRef.current?.focus(), 100);
+              }, 800);
+          } else {
+              // Only trigger advancement if this was the last sample
+              setSuccessMsg(`✓ Control de calidad fallido — avanzando a Validación de Resultados`);
+              // Signal QC failure to parent (advance step, mark QC failed)
+              onResultadoGuardado && onResultadoGuardado({
+                action: 'rejected',
+                qc_failed: true,
+                tarea_id: taskId,
+                numero_muestra: tareaInfo.numero_muestra,
+              });
+      
+              setTimeout(() => {
+                onOpenChange(false);
+                fullReset();
+              }, 800);
+          }
 
-        setTimeout(() => {
-          onOpenChange(false);
-          fullReset();
-        }, 800);
         return;
       }
 
@@ -403,13 +584,11 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
         { id: taskId, numero: tareaInfo.numero_muestra, analisis: tareaInfo.nombre_analisis }
       ];
 
-      // Check remaining pending samples
-      const remainingAfterReject = pendingMuestras.filter(
-        m => (m.id_muestra_analisis || m.idMuestraAnalisis) !== tareaInfo.id_muestra_analisis
-      );
+      // Check remaining pending samples using processedIds
+      const isCompleteValidacion = isComplete;
 
       // Cancel the OT (all samples rejected or this is the final rejection in validation)
-      if (remainingAfterReject.length === 0) {
+      if (isCompleteValidacion || pendingMuestras.length <= 1) {
         try {
           await WorkOrder.cancelar(ordenTrabajoId);
         } catch (cancelErr) {
@@ -424,24 +603,24 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
         validation_rejected: true,
         tarea_id: taskId,
         numero_muestra: tareaInfo.numero_muestra,
-        ot_cancelled: remainingAfterReject.length === 0,
+        ot_cancelled: isCompleteValidacion || pendingMuestras.length <= 1,
         rejected_tasks: rejectedTaskIds,
         rejected_muestras: rejectedMuestras,
       });
 
       // Advance to next sample or close
       setTimeout(() => {
-        if (remainingAfterReject.length > 0) {
-          const nextIdx = Math.min(currentIndex, remainingAfterReject.length - 1);
-          setCurrentIndex(nextIdx);
-          setSuccessMsg(null);
+        if (!isCompleteValidacion && pendingMuestras.length > 1) {
+          setCurrentIndex(getNextIndex());
           resetFormFields();
-          autoSelectMuestra(remainingAfterReject[nextIdx]);
+          setSuccessMsg(null);
+          setTimeout(() => codigoRef.current?.focus(), 100);
         } else {
           setSuccessMsg('✓ Muestras rechazadas — OT enviada a Cancelados');
           setTimeout(() => {
             onOpenChange(false);
             fullReset();
+            // Need to notify parent if it wasn't a validacion failure, or it's handled above
           }, 1000);
         }
       }, 1500);
@@ -458,7 +637,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     const min = tareaInfo.limite_minimo ?? tareaInfo.limite_deteccion ?? null;
     const max = tareaInfo.limite_maximo ?? null;
     const parametro = tareaInfo.nombre_parametro || tareaInfo.nombre_analisis || '';
-    const normativa = tareaInfo.normativa || tareaInfo.norma || 'NCh 409/1';
+    const normativa = tareaInfo.normativa || tareaInfo.norma || '';
 
     return (
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs">
@@ -469,8 +648,13 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700">
           <div className="flex items-center gap-1">
             <span className="text-gray-500">•</span>
-            <span>{normativa}</span>
+            <span className="font-medium text-blue-900">{parametro}</span>
           </div>
+          {normativa && (
+            <div>
+              <span className="text-gray-500">Normativa:</span> <span className="font-medium">{normativa}</span>
+            </div>
+          )}
           {unidad && (
             <div>
               <span className="text-gray-500">Unidad:</span> <span className="font-medium">{unidad}</span>
@@ -478,7 +662,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
           )}
           {min !== null && (
             <div>
-              <span className="text-gray-500">Lím. Detección:</span> <span className="font-medium">{min}</span>
+              <span className="text-gray-500">Lím. Mín/Det:</span> <span className="font-medium">{min}</span>
             </div>
           )}
           {max !== null && (
@@ -697,7 +881,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
             <Button variant="outline" onClick={() => { onOpenChange(false); fullReset(); }} disabled={loading}>
               Cerrar
             </Button>
-            {currentIndex + 1 < totalMuestras && !rejectOnlyMode && (
+            {processedIds.size + 1 < totalMuestras && !rejectOnlyMode && (
               <Button variant="ghost" onClick={handleSkip} disabled={loading} title="Saltar a la siguiente muestra">
                 <SkipForward className="w-4 h-4 mr-1" />
                 Omitir
@@ -723,7 +907,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
               {loading ? 'Guardando...' : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  Guardar {currentIndex + 1 < totalMuestras ? 'y Siguiente' : ''}
+                  Guardar {processedIds.size + 1 < totalMuestras ? 'y Siguiente' : ''}
                 </>
               )}
             </Button>

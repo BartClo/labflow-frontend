@@ -182,7 +182,7 @@ export default function WorkflowStepModal({ step, workOrder, onClose, onStatusUp
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <FlaskConical className="w-4 h-4 text-purple-500" />
-                    <p className="text-sm text-gray-600 font-medium">Parámetros de la OT</p>
+                      <p className="text-sm text-gray-600 font-medium">Parámetros de las muestras</p>
                   </div>
                   <div className="space-y-2">
                     {tareas.map((tarea, idx) => {
@@ -206,7 +206,7 @@ export default function WorkflowStepModal({ step, workOrder, onClose, onStatusUp
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-xs">
                             <div>
-                              <span className="text-gray-500">Parámetro:</span>{' '}
+                                <span className="text-gray-500">Análisis:</span>{' '}
                               <span className="font-medium text-gray-800">{parametro}</span>
                             </div>
                             {normativa && (
@@ -311,7 +311,7 @@ export default function WorkflowStepModal({ step, workOrder, onClose, onStatusUp
 
           {/* Acciones */}
           <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-            {step.status === 'en_progreso' && (
+            {step.status === 'en_progreso' && !step.step_name?.toLowerCase().includes('control') && !step.step_name?.toLowerCase().includes('valida') && (
               <Button
                 onClick={() => {
                   onStatusUpdate && onStatusUpdate(step.id, 'completado');
@@ -322,6 +322,9 @@ export default function WorkflowStepModal({ step, workOrder, onClose, onStatusUp
                 <CheckCircle className="w-4 h-4 mr-2" />
                 Marcar como Completado
               </Button>
+            )}
+            {step.status === 'en_progreso' && (step.step_name?.toLowerCase().includes('control') || step.step_name?.toLowerCase().includes('valida')) && (
+               <p className="text-xs text-gray-500 my-auto hidden sm:block">Completa el paso desde la vista principal para ingresar los resultados.</p>
             )}
             <Button variant="outline" onClick={onClose}>
               Cerrar
