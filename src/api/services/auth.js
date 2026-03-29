@@ -1,8 +1,4 @@
-/**
- * Authentication Service
- * 
- * Handles user authentication, registration, and session management
- */
+
 
 import apiClient from '../client';
 
@@ -12,61 +8,21 @@ export const authService = {
    */
   login: async (email, password) => {
     try {
-      console.log('AuthService: Starting login for:', email);
-      
-      // For testing without backend, you can uncomment this block:
-      // if (email === 'admin@admin.cl' && password === 'admin123') {
-      //   const authData = {
-      //     user: {
-      //       id: '1',
-      //       nombre: 'Admin',
-      //       apellido: 'Usuario',
-      //       email: 'admin@admin.cl',
-      //       username: 'admin123',
-      //       telefono: '912345678',
-      //       direccion: 'direccion',
-      //       fechaNacimiento: '2004-11-21',
-      //       rol: { nombre: 'Administrador' },
-      //       activo: true
-      //     },
-      //     token: 'mock-token-1'
-      //   };
-      //   localStorage.setItem('token', authData.token);
-      //   localStorage.setItem('user', JSON.stringify(authData.user));
-      //   console.log('AuthService: Mock login successful');
-      //   return authData;
-      // }
-      
-      // Get all users from the backend
-      const response = await apiClient.get('/usuarios');
-      console.log('AuthService: Got users response:', response.data);
-      const users = response.data;
-      
-      // Debug: Let's see the exact structure of the first user
-      if (users.length > 0) {
-        console.log('AuthService: First user structure:', JSON.stringify(users[0], null, 2));
-      }
-      
-      // Find user with matching email (password validation disabled for now)
-      const user = users.find(u => {
-        console.log('AuthService: Checking user:', {
-          email: u.email, 
-          inputEmail: email,
-          activo: u.activo,
-          emailMatch: u.email === email,
-          activoMatch: u.activo === true
-        });
-        
-        // Only validate email and active status for now
-        return u.email === email && u.activo === true;
+
+
+      const response = await apiClient.post('/usuarios/login', {
+        email: email,
+        password: password
       });
-      
-      console.log('AuthService: Found user:', user);
-      
-      if (!user) {
-        throw new Error('Credenciales incorrectas');
+
+      const data = response.data;
+
+      if (!data.success) {
+        throw new Error(data.message || 'Credenciales incorrectas');
       }
-      
+
+      const user = data.user;
+
       // Store authentication data
       const authData = {
         user: {
@@ -78,22 +34,26 @@ export const authService = {
           telefono: user.telefono,
           direccion: user.direccion,
           fechaNacimiento: user.fechaNacimiento,
-          rol: user.rol, // This contains the role information
+          rol: user.rol,
+          rol_nombre: user.rol?.nombre || user.rol_nombre || '',
           activo: user.activo
         },
-        token: `mock-token-${user.id}` // Generate a mock token for now
+        token: `mock-token-${user.id}`
       };
-      
-      localStorage.setItem('token', authData.token);
-      localStorage.setItem('user', JSON.stringify(authData.user));
-      
-      console.log('AuthService: Login successful, stored data:', authData);
-      
+
+      sessionStorage.setItem('token', authData.token);
+      sessionStorage.setItem('user', JSON.stringify(authData.user));
+
+
+
       return authData;
     } catch (error) {
       console.error('AuthService: Login error:', error);
-      if (error.message === 'Credenciales incorrectas') {
-        throw error;
+      if (error?.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      }
+      if (error.message) {
+        throw new Error(error.message);
       }
       throw new Error('Error al conectar con el servidor');
     }
@@ -116,8 +76,8 @@ export const authService = {
       // In the future, you can call a logout endpoint
       // await apiClient.post('/auth/logout');
     } finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('user');
     }
   },
 
@@ -135,7 +95,7 @@ export const authService = {
   refreshToken: async () => {
     const response = await apiClient.post('/auth/refresh');
     if (response.data.token) {
-      localStorage.setItem('token', response.data.token);
+      sessionStorage.setItem('token', response.data.token);
     }
     return response.data;
   },
@@ -163,14 +123,14 @@ export const authService = {
    * Check if user is authenticated
    */
   isAuthenticated: () => {
-    return !!localStorage.getItem('token');
+    return !!sessionStorage.getItem('token');
   },
 
   /**
    * Get stored user data
    */
   getStoredUser: () => {
-    const user = localStorage.getItem('user');
+    const user = sessionStorage.getItem('user');
     return user ? JSON.parse(user) : null;
   },
 };

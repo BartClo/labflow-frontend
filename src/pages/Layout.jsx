@@ -63,8 +63,6 @@ export default function Layout({ children, currentPageName }) {
         const orders = await WorkOrder.getAll();
         const ordersList = Array.isArray(orders) ? orders : (orders?.content || []);
         
-        console.log('📊 Stats - Orders loaded:', ordersList.length, ordersList);
-        
         // "Activas" = any OT not completed or cancelled
         const activas = ordersList.filter(o => {
           const status = (o.status || o.estado || '').toLowerCase();
@@ -85,7 +83,6 @@ export default function Layout({ children, currentPageName }) {
           return status === 'en_proceso';
         }).length;
         
-        console.log('📊 Stats computed:', { activas, urgentes, enProceso });
         setStats({ otActivas: activas, otUrgentes: urgentes, otEnProceso: enProceso });
       } catch (error) {
         console.error("Error cargando estadísticas:", error);

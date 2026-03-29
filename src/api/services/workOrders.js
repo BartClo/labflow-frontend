@@ -167,11 +167,11 @@ const transformWorkOrder = (raw) => {
     ).length,
     rejected_tasks: tareas.filter(t => {
       const s = (t.estado_analisis || t.estadoAnalisis || '').toUpperCase();
-      return s === 'RECHAZADO' || s === 'RECHAZADA';
+      return s === 'RECHAZADO' || s === 'RECHAZADA' || s === 'CANCELADO' || t.cumple_normativa === false;
     }).length,
     has_rejected: tareas.some(t => {
       const s = (t.estado_analisis || t.estadoAnalisis || '').toUpperCase();
-      return s === 'RECHAZADO' || s === 'RECHAZADA';
+      return s === 'RECHAZADO' || s === 'RECHAZADA' || s === 'CANCELADO' || t.cumple_normativa === false;
     }),
     equipment_used: raw.equipment_used || '',
   };

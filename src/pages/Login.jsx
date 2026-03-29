@@ -28,9 +28,7 @@ export default function Login() {
         return;
       }
 
-      console.log("Attempting login with:", { email });
       const result = await login(email, password);
-      console.log("Login successful:", result);
 
       // Wait a bit for state to update
       setTimeout(() => {
@@ -185,4 +183,4 @@ export default function Login() {
       </div>
     </div>
   );
-}
+    }

@@ -57,15 +57,13 @@ export default defineConfig(({ mode }) => {
           rewrite: (path) => path,
           configure: (proxy) => {
             proxy.on('error', (err, req, res) => {
-              const backendUrl = env.VITE_API_BASE_URL || 'http://localhost:8080';
-              console.warn(`\x1b[33m[proxy] Backend no disponible en ${backendUrl} → ${req.url}\x1b[0m`);
+              // Silenciar errores de conexión para evitar ruido en el log durante desarrollo
               if (!res.headersSent) {
                 res.writeHead(503, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                   status: 503,
                   error: 'Backend no disponible',
-                  message: `No se puede conectar al backend en ${backendUrl}. Asegúrate de que el servidor esté corriendo.`,
-                  path: req.url
+                  message: 'El servidor backend no está disponible. Inicia el backend con: mvn -f labflow-backend/pom.xml spring-boot:run'
                 }));
               }
             });

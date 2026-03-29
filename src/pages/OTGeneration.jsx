@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Sample, WorkOrder, Analysis, AnalysisTemplate } from "@/api/entities";
 import { administrationService } from "@/api/services/administration";
+import { workOrdersService } from "@/api/services/workOrders";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,6 +91,10 @@ export default function OTGenerationPage() {
   // Delete confirmation dialog state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletingOrderId, setDeletingOrderId] = useState(null);
+
+  // Error modal state
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -477,7 +482,8 @@ export default function OTGenerationPage() {
       const serverMsg = error?.response?.data?.message || error?.response?.data?.error || error?.serverMessage || error.message;
       setShowDeleteConfirm(false);
       setDeletingOrderId(null);
-      alert(`No se pudo eliminar la OT: ${serverMsg}`);
+      setErrorMessage(`No se pudo eliminar la OT: ${serverMsg}`);
+      setShowErrorModal(true);
     }
   };
 
@@ -1208,6 +1214,29 @@ export default function OTGenerationPage() {
         cancelText="Cancelar"
         type="danger"
       />
+
+      {/* Modal de error de eliminación */}
+      <Dialog open={showErrorModal} onOpenChange={setShowErrorModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="w-5 h-5" />
+              Error al eliminar OT
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-700">{errorMessage}</p>
+          </div>
+          <DialogFooter>
+            <Button 
+              onClick={() => setShowErrorModal(false)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Aceptar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

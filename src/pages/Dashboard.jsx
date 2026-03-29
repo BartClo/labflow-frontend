@@ -83,12 +83,7 @@ export default function Dashboard() {
       const samplesArray = Array.isArray(samplesData) ? samplesData : [];
       const workOrdersArray = Array.isArray(workOrdersData) ? workOrdersData : [];
       
-      console.log('📊 Dashboard data loaded:');
-      console.log('  - Clients:', clientsArray.length);
-      console.log('  - Quotes:', quotesArray.length);
-      console.log('  - Samples:', samplesArray.length);
-      console.log('  - Work Orders:', workOrdersArray.length);
-      console.log('  - OT statuses:', workOrdersArray.map(o => ({ id: o.ot_number, status: o.status, has_rejected: o.has_rejected, rejected_tasks: o.rejected_tasks })));
+
       
       setStats({
         clients: clientsArray.length,
@@ -114,29 +109,30 @@ export default function Dashboard() {
     setIsLoading(false);
   };
 
-  const getWorkflowStats = () => {
+  const getSampleStats = () => {
     const statusCounts = {
-      generada: 0,
-      en_preparacion: 0,
-      en_analisis: 0,
-      completada: 0
+      recibida: 0,
+      en_proceso: 0,
+      analizada: 0,
+      completada: 0,
+      rechazada: 0
     };
 
-    // Count OTs by their workflow stage
-    allWorkOrders.forEach(order => {
-      const status = (order.status || '').toLowerCase();
+    // Count samples by their status
+    allSamples.forEach(sample => {
+      const status = (sample.status || '').toLowerCase();
 
       if (status === 'completada' || status === 'finalizada') {
         statusCounts.completada++;
-      } else if (status === 'en_proceso' || status === 'en_analisis' || status === 'en_progreso') {
-        // 3rd module onward = En Análisis
-        statusCounts.en_analisis++;
-      } else if (status === 'en_preparacion') {
-        // 2nd module = En Preparación
-        statusCounts.en_preparacion++;
-      } else if (status !== 'cancelada') {
-        // generada, abierta, or any other newly-created OT = Generadas (1st module)
-        statusCounts.generada++;
+      } else if (status === 'rechazada' || status === 'cancelada') {
+        statusCounts.rechazada++;
+      } else if (status === 'analizada') {
+        statusCounts.analizada++;
+      } else if (status === 'en_proceso' || status === 'en_progreso') {
+        statusCounts.en_proceso++;
+      } else {
+        // recibida, pendiente, or others
+        statusCounts.recibida++;
       }
     });
 
@@ -184,13 +180,13 @@ export default function Dashboard() {
 
       {/* Fila principal de contenido con altura igual */}
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Estado del workflow */}
-        <div className="h-full">
-          <WorkflowStatus 
-            workflowStats={getWorkflowStats()}
-            isLoading={isLoading}
-          />
-        </div>
+          {/* Estado de las muestras */}
+          <div className="h-full">
+            <WorkflowStatus
+              sampleStats={getSampleStats()}
+              isLoading={isLoading}
+            />
+          </div>
 
         {/* Alertas de prioridad */}
         <div className="h-full">

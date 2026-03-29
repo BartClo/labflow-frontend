@@ -43,8 +43,10 @@ const workflowSteps = [
   }
 ];
 
-export default function WorkflowStatus({ workflowStats, isLoading }) {
-  const total = Object.values(workflowStats).reduce((sum, count) => sum + count, 0);
+export default function WorkflowStatus({ sampleStats, workflowStats, isLoading }) {
+  // Support both prop names for backward compatibility
+  const stats = sampleStats || workflowStats || {};
+  const total = Object.values(stats || {}).reduce((sum, count) => sum + (count || 0), 0);
 
   if (isLoading) {
     return (
@@ -69,7 +71,7 @@ export default function WorkflowStatus({ workflowStats, isLoading }) {
       </CardHeader>
       <CardContent className="flex-1 flex flex-col justify-around">
         {workflowSteps.map((step) => {
-          const count = workflowStats[step.key] || 0;
+          const count = stats[step.key] || 0;
           const percentage = total > 0 ? (count / total) * 100 : 0;
           
           return (

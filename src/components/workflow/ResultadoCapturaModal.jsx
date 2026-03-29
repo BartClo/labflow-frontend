@@ -41,6 +41,8 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   const [tareaInfo, setTareaInfo] = useState(null);
   const [valorMedido, setValorMedido] = useState('');
   const [observaciones, setObservaciones] = useState('');
+  const [reportarDiscrepancia, setReportarDiscrepancia] = useState(false);
+  const [nuevoValor, setNuevoValor] = useState('');
   const [validacionEstado, setValidacionEstado] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -110,6 +112,8 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     setError(null);
     setSuccessMsg(null);
     setLoading(false);
+    setReportarDiscrepancia(false);
+    setNuevoValor('');
   };
 
   const fullReset = () => {
@@ -130,13 +134,9 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     const barcode = muestra.codigo_barras || muestra.codigoBarras || '';
     setCodigoBarras(barcode);
     
-    // Auto-populate valorMedido if it exists so the user can easily validate it
-    const existingValue = muestra.valor_medido ?? muestra.valorMedido;
-    if (existingValue !== undefined && existingValue !== null) {
-      setValorMedido(existingValue.toString());
-    } else {
-      setValorMedido('');
-    }
+    // NUNCA pre-llenar el valor - siempre debe venir vacío para evitar confusiones
+    // Esto es especialmente crítico cuando se rehace una muestra fallida
+    setValorMedido('');
 
     setTareaInfo({
       id_muestra_analisis: muestra.id_muestra_analisis || muestra.idMuestraAnalisis,
@@ -201,7 +201,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   // Fetch missing limits from analysis template if the backend sends null in tasks
   useEffect(() => {
     const fetchLimites = async () => {
-      if (tareaInfo && tareaInfo.nombre_analisis && tareaInfo.limite_maximo === null && tareaInfo.limite_minimo === null && tareaInfo.limite_deteccion === null) {
+      if (tareaInfo && tareaInfo.nombre_analisis && (tareaInfo.limite_maximo === null || tareaInfo.limite_minimo === null || tareaInfo.limite_deteccion === null)) {
         try {
           const data = await analysisService.getAll();
           const match = data.find(a => 
@@ -232,13 +232,19 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     fetchLimites();
   }, [tareaInfo?.id_muestra_analisis]);
 
+  // Helper to safely parse limits that might have commas instead of dots
+  const parseSafeFloat = (val) => {
+    if (val === null || val === undefined || val === '') return NaN;
+    return parseFloat(val.toString().replace(',', '.'));
+  };
+
   // Traffic-light: validate value against limits
   useEffect(() => {
     if (!tareaInfo || valorMedido === '') {
       setValidacionEstado(null);
       return;
     }
-    const valor = parseFloat(valorMedido);
+    const valor = parseSafeFloat(valorMedido);
     if (Number.isNaN(valor)) { setValidacionEstado(null); return; }
 
     let limiteMin = tareaInfo.limite_minimo ?? tareaInfo.limite_deteccion ?? null;
@@ -248,22 +254,22 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     if (limiteMax === '') limiteMax = null;
 
     if (limiteMin !== null && limiteMax !== null) {
-      const min = parseFloat(limiteMin);
-      const max = parseFloat(limiteMax);
+      const min = parseSafeFloat(limiteMin);
+      const max = parseSafeFloat(limiteMax);
       if (!Number.isNaN(min) && !Number.isNaN(max)) {
         setValidacionEstado(valor >= min && valor <= max ? 'valido' : 'invalido');
         return;
       }
     }
     if (limiteMin !== null) {
-      const min = parseFloat(limiteMin);
+      const min = parseSafeFloat(limiteMin);
       if (!Number.isNaN(min)) {
         setValidacionEstado(valor >= min ? 'valido' : 'invalido');
         return;
       }
     }
     if (limiteMax !== null) {
-      const max = parseFloat(limiteMax);
+      const max = parseSafeFloat(limiteMax);
       if (!Number.isNaN(max)) {
         setValidacionEstado(valor <= max ? 'valido' : 'invalido');
         return;
@@ -282,24 +288,28 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
       setSuccessMsg(null);
       try {
         const taskId = tareaInfo.id_muestra_analisis ?? tareaInfo.idMuestraAnalisis;
+        // When reporting discrepancy, use the new value for validation
+        const valorParaValidar = (reportarDiscrepancia && nuevoValor) ? parseFloat(nuevoValor) : parseFloat(valorMedido);
+        
         // Calculate cumple_normativa based on validation state or limits
         let cumpleNormativa = null;
-        if (validacionEstado === 'valido') {
+        if (validacionEstado === 'valido' && !reportarDiscrepancia) {
+          // If explicitly valid and not reporting discrepancy, it's compliant
           cumpleNormativa = true;
-        } else if (validacionEstado === 'invalido') {
+        } else if (validacionEstado === 'invalido' && !reportarDiscrepancia) {
+          // If explicitly invalid and not reporting discrepancy, it's non-compliant
           cumpleNormativa = false;
         } else {
-          // If no explicit validation state, check against limits if available
-          const valor = parseFloat(valorMedido);
+          // If reporting discrepancy OR no explicit validation state, check against limits
           const min = parseFloat(tareaInfo?.limite_minimo ?? tareaInfo?.limite_deteccion);
           const max = parseFloat(tareaInfo?.limite_maximo);
-          if (!isNaN(valor)) {
+          if (!isNaN(valorParaValidar)) {
             if (!isNaN(min) && !isNaN(max)) {
-              cumpleNormativa = valor >= min && valor <= max;
+              cumpleNormativa = valorParaValidar >= min && valorParaValidar <= max;
             } else if (!isNaN(max)) {
-              cumpleNormativa = valor <= max;
+              cumpleNormativa = valorParaValidar <= max;
             } else if (!isNaN(min)) {
-              cumpleNormativa = valor >= min;
+              cumpleNormativa = valorParaValidar >= min;
             } else {
               // No limits available, assume compliant
               cumpleNormativa = true;
@@ -312,9 +322,11 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
           parametros: {
             [parametroKey]: {
               valor: parseFloat(valorMedido),
-              valor_medido: parseFloat(valorMedido), // para compatibilidad
+              valor_medido: parseFloat(valorMedido), // valor original de QC
               cumple_normativa: cumpleNormativa,
               observaciones: observaciones || null,
+              reportarDiscrepancia: reportarDiscrepancia || false,
+              nuevoValor: reportarDiscrepancia && nuevoValor ? parseFloat(nuevoValor) : null,
             },
           },
         };
@@ -329,6 +341,8 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
             codigo_barras: tareaInfo.codigo_barras || tareaInfo.numero_muestra || '',
             valor_medido: parseFloat(valorMedido),
             observaciones: observaciones || null,
+            reportarDiscrepancia: reportarDiscrepancia || false,
+            nuevoValor: reportarDiscrepancia && nuevoValor ? parseFloat(nuevoValor) : null,
           });
         } catch (fallbackErr) {
           // Non-critical: the primary updateResult already succeeded
@@ -355,8 +369,9 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
           return currentIndex + 1;
         };
 
-        if (cumpleNormativa === false) {
-          // Auto-rechazo si el valor está fuera de norma
+        if (cumpleNormativa === false && !reportarDiscrepancia) {
+          // Auto-rechazo SOLO si el valor está fuera de norma Y no está reportando discrepancia
+          // Si reporta discrepancia, permitir guardar incluso si el nuevo valor está fuera de rango
           try {
             await tasksService.rechazarTarea(taskId);
           } catch (rejectErr) {
@@ -413,6 +428,22 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
           const nextIdx = getNextIndex();
           if (currentQCFailed) {
               setSuccessMsg(`⚠️ Control de calidad fallido (${newSavedCount}/${totalMuestras}). Escanee la siguiente muestra...`);
+          } else if (reportarDiscrepancia) {
+              // When reporting discrepancy, acknowledge it was corrected
+              const nuevoValorNum = parseFloat(nuevoValor);
+              const min = parseFloat(tareaInfo?.limite_minimo ?? tareaInfo?.limite_deteccion);
+              const max = parseFloat(tareaInfo?.limite_maximo);
+              let isNuevoValorFuera = false;
+              
+              if (!isNaN(nuevoValorNum) && !isNaN(min) && !isNaN(max)) {
+                isNuevoValorFuera = nuevoValorNum < min || nuevoValorNum > max;
+              }
+              
+              if (isNuevoValorFuera) {
+                setSuccessMsg(`⚠️ Corrección registrada (valor fuera de rango) (${newSavedCount}/${totalMuestras}). Escanee la siguiente muestra...`);
+              } else {
+                setSuccessMsg(`✓ Corrección guardada (${newSavedCount}/${totalMuestras}). Escanee la siguiente muestra...`);
+              }
           } else {
               setSuccessMsg(`✓ Resultado guardado (${newSavedCount}/${totalMuestras}). Escanee la siguiente muestra...`);
           }
@@ -676,6 +707,43 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   };
 
   const renderSemaforo = () => {
+    // When reporting discrepancy, validate the new value instead
+    if (reportarDiscrepancia && nuevoValor) {
+      const nuevoValorNum = parseFloat(nuevoValor);
+      const min = parseFloat(tareaInfo?.limite_minimo ?? tareaInfo?.limite_deteccion);
+      const max = parseFloat(tareaInfo?.limite_maximo);
+      let cumple = false;
+      
+      if (!isNaN(nuevoValorNum)) {
+        if (!isNaN(min) && !isNaN(max)) {
+          cumple = nuevoValorNum >= min && nuevoValorNum <= max;
+        } else if (!isNaN(max)) {
+          cumple = nuevoValorNum <= max;
+        } else if (!isNaN(min)) {
+          cumple = nuevoValorNum >= min;
+        } else {
+          cumple = true;
+        }
+      }
+      
+      if (cumple) {
+        return (
+          <div className="flex items-center gap-2 p-2 rounded bg-green-50 text-green-700">
+            <CheckCircle className="w-4 h-4" />
+            Nuevo valor dentro de los límites normativos
+          </div>
+        );
+      } else {
+        return (
+          <div className="flex items-center gap-2 p-2 rounded bg-red-50 text-red-700">
+            <AlertTriangle className="w-4 h-4" />
+            ALERTA: Nuevo valor fuera de norma
+          </div>
+        );
+      }
+    }
+    
+    // Normal validation state display
     if (!validacionEstado) return null;
     if (validacionEstado === 'valido') {
       return (
@@ -714,7 +782,7 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto my-4">
         <DialogHeader>
           <div className="flex items-center justify-between w-full">
             <DialogTitle className="flex items-center gap-2">
@@ -832,35 +900,75 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleGuardar(); } }}
                   placeholder="Valor medido"
                   className="mt-1"
+                  readOnly={isInValidacion}
                 />
               </div>
 
               {renderSemaforo()}
 
+              {/* Alerta y opción para reportar discrepancia en Validación */}
+              {isInValidacion && validacionEstado === 'invalido' && (
+                <div className="space-y-3">
+                  <div className="space-y-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm text-yellow-800">
+                        <strong>Valor diferente al control de calidad</strong>
+                        <p className="mt-1 text-xs">El valor ingresado no coincide con el medido en la etapa anterior. Si el valor anterior fue incorrecto, marque la opción para reportar la corrección.</p>
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={reportarDiscrepancia}
+                        onChange={(e) => setReportarDiscrepancia(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                      <span className="text-sm text-yellow-800 font-medium">
+                        El valor anterior fue incorrecto
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Campo para el nuevo valor entregado por la máquina */}
+                  {reportarDiscrepancia && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <Label htmlFor="nuevo-valor" className="text-sm font-semibold text-blue-900">
+                        Valor nuevo entregado por la máquina *
+                      </Label>
+                      <Input
+                        id="nuevo-valor"
+                        type="number"
+                        step="0.000001"
+                        value={nuevoValor}
+                        onChange={(e) => setNuevoValor(e.target.value)}
+                        placeholder="Ingrese el nuevo valor medido"
+                        className="mt-2"
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Campo de observaciones unificado */}
               <div>
-                <Label htmlFor="obs">Observaciones (opcional)</Label>
+                <Label htmlFor="obs" className={reportarDiscrepancia ? 'text-sm font-semibold' : ''}>
+                  {reportarDiscrepancia ? 'Nota sobre la corrección *' : 'Observaciones (opcional)'}
+                </Label>
                 <Textarea
                   id="obs"
                   value={observaciones}
                   onChange={(e) => setObservaciones(e.target.value)}
-                  rows={2}
-                  className="mt-1"
+                  rows={reportarDiscrepancia ? 3 : 2}
+                  placeholder={reportarDiscrepancia ? 'Describe por qué el valor anterior fue incorrecto y cualquier acción correctiva tomada...' : 'Ingrese observaciones si es necesario'}
+                  className={`mt-1 ${reportarDiscrepancia ? 'bg-blue-50 border-blue-200' : ''}`}
+                  required={reportarDiscrepancia}
                 />
+                {reportarDiscrepancia && (
+                  <p className="text-xs text-blue-700 mt-2">Esta nota quedará registrada en la muestra para auditoría.</p>
+                )}
               </div>
-
-              {/* Botón de rechazo siempre visible cuando hay muestra seleccionada */}
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleRejectSample}
-                className="w-full"
-                disabled={loading}
-              >
-                <XCircle className="w-4 h-4 mr-2" />
-                Rechazar Muestra
-              </Button>
-            </div>
-          )}
 
           {error && (
             <Alert variant="destructive">
@@ -873,6 +981,8 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
               <CheckCircle className="w-4 h-4" />
               <AlertDescription>{successMsg}</AlertDescription>
             </Alert>
+          )}
+            </div>
           )}
         </div>
 
@@ -888,12 +998,13 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
               </Button>
             )}
           </div>
-          {/* In reject-only mode (Validación + QC failed + still invalid), only show reject button */}
-          {rejectOnlyMode ? (
+          {/* En Validación con discrepancia reportada o en modo rechazo obligatorio */}
+          {rejectOnlyMode && !reportarDiscrepancia ? (
             <Button
               variant="destructive"
               onClick={handleRejectSample}
               disabled={loading || !tareaInfo}
+              className="w-full"
             >
               <XCircle className="w-4 h-4 mr-2" />
               Rechazar y Enviar a Cancelados
@@ -901,13 +1012,13 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
           ) : (
             <Button
               onClick={handleGuardar}
-              disabled={loading || !tareaInfo || valorMedido === ''}
-              className="bg-green-600 hover:bg-green-700"
+              disabled={loading || !tareaInfo || valorMedido === '' || (reportarDiscrepancia && (!observaciones || !nuevoValor))}
+              className="bg-green-600 hover:bg-green-700 w-full"
             >
               {loading ? 'Guardando...' : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  Guardar {processedIds.size + 1 < totalMuestras ? 'y Siguiente' : ''}
+                  {reportarDiscrepancia ? 'Guardar Corrección' : 'Guardar Resultado'} {processedIds.size + 1 < totalMuestras ? 'y Siguiente' : ''}
                 </>
               )}
             </Button>

@@ -207,9 +207,7 @@ const validateSampleData = (formData) => {
 const transformBackendToFrontend = (backendSample) => {
   if (!backendSample) return null;
   
-  // Log the raw backend data to understand the structure
-  debugLog('🔍 Raw backend sample data', backendSample);
-  debugLog('🔍 Cliente object', backendSample.cliente);
+
   
   const transformedSample = {
     id: backendSample.id_muestra || backendSample.id,
@@ -267,29 +265,7 @@ const transformBackendToFrontend = (backendSample) => {
     updated_at: backendSample.updatedAt || backendSample.updated_at
   };
   
-  debugLog('🔄 Transformed sample data', {
-    id: transformedSample.id,
-    client_id: transformedSample.client_id,
-    client_name: transformedSample.client_name,
-    cliente_debug: {
-      original_cliente: backendSample.cliente,
-      cliente_id_cliente: backendSample.cliente?.id_cliente,
-      direct_idCliente: backendSample.idCliente,
-      id_cliente: backendSample.id_cliente
-    },
-    transport_conditions: transformedSample.transport_conditions,
-    transport_debug: {
-      temperatura_transporte: backendSample.temperatura_transporte,
-      tipo_envase: backendSample.tipo_envase,
-      descripcion_conservantes: backendSample.descripcion_conservantes
-    },
-    analisis_debug: {
-      original_analisis: backendSample.analisis || [],
-      analisis_count: Array.isArray(backendSample.analisis) ? backendSample.analisis.length : 0
-    },
-    requested_tests: transformedSample.requested_tests,
-    observations: transformedSample.observations
-  });
+
   
   return transformedSample;
 };
