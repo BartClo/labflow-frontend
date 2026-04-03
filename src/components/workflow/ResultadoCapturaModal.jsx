@@ -156,6 +156,15 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
 
   // Handle manual combobox selection
   const handleMuestraSelect = (muestraId) => {
+    // Check if this sample was already processed
+    if (processedIds.has(muestraId)) {
+      setError(`Esta muestra ya fue procesada. ¿Desea realizar algún cambio de valor?`);
+      setTareaInfo(null);
+      setCodigoBarras('');
+      setValorMedido('');
+      return;
+    }
+    
     const idx = pendingMuestras.findIndex(
       m => (m.id_muestra_analisis || m.idMuestraAnalisis) === muestraId
     );
@@ -184,9 +193,19 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
     });
 
     if (matchedSample) {
+      const taskId = matchedSample.id_muestra_analisis || matchedSample.idMuestraAnalisis;
+      
+      // Check if already processed
+      if (processedIds.has(taskId)) {
+        setError('Esta muestra ya fue procesada. ¿Desea realizar algún cambio de valor?');
+        setTareaInfo(null);
+        setLoading(false);
+        return;
+      }
+      
       autoSelectMuestra(matchedSample);
       const idx = pendingMuestras.findIndex(
-        m => (m.id_muestra_analisis || m.idMuestraAnalisis) === (matchedSample.id_muestra_analisis || matchedSample.idMuestraAnalisis)
+        m => (m.id_muestra_analisis || m.idMuestraAnalisis) === taskId
       );
       if (idx >= 0) setCurrentIndex(idx);
       setLoading(false);
@@ -831,13 +850,16 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
                     const numero = m.numero_muestra || m.numeroMuestra || 'Sin número';
                     const analisis = m.nombre_analisis || m.nombreAnalisis || '';
                     const barcode = m.codigo_barras || m.codigoBarras || '';
+                    const isProcessed = processedIds.has(id);
+                    
                     return (
-                      <SelectItem key={id} value={id}>
+                      <SelectItem key={id} value={id} disabled={isProcessed}>
                         <div className="flex items-center gap-2">
-                          <FlaskConical className="w-3 h-3 text-blue-500" />
-                          <span className="font-medium">{numero}</span>
-                          {analisis && <span className="text-gray-500 text-xs">— {analisis}</span>}
-                          {barcode && <span className="text-gray-400 text-xs ml-1">[{barcode}]</span>}
+                          {isProcessed && <CheckCircle className="w-3 h-3 text-green-600" />}
+                          <FlaskConical className={`w-3 h-3 ${isProcessed ? 'text-gray-400' : 'text-blue-500'}`} />
+                          <span className={isProcessed ? 'text-gray-400 line-through' : ''}>{numero}</span>
+                          {analisis && <span className={`text-gray-500 text-xs ${isProcessed ? 'text-gray-300' : ''}`}>— {analisis}</span>}
+                          {barcode && <span className={`text-gray-400 text-xs ml-1 ${isProcessed ? 'text-gray-300' : ''}`}>[{barcode}]</span>}
                         </div>
                       </SelectItem>
                     );
@@ -900,14 +922,13 @@ const ResultadoCapturaModal = ({ open, onOpenChange, ordenTrabajoId, muestrasOT 
                   onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleGuardar(); } }}
                   placeholder="Valor medido"
                   className="mt-1"
-                  readOnly={isInValidacion}
                 />
               </div>
 
               {renderSemaforo()}
 
-              {/* Alerta y opción para reportar discrepancia en Validación */}
-              {isInValidacion && validacionEstado === 'invalido' && (
+              {/* Alerta y opción para reportar discrepancia en Validación - SIEMPRE MOSTRAR EN VALIDACIÓN */}
+              {isInValidacion && (
                 <div className="space-y-3">
                   <div className="space-y-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                     <div className="flex items-start gap-2">

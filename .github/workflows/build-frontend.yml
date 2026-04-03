@@ -1,0 +1,230 @@
+name: Build Frontend
+
+on:
+  push:
+    branches:
+      - Produccion
+      - develop
+    paths:
+      - 'labflow-frontend/**'
+      - '.github/workflows/build-frontend.yml'
+  pull_request:
+    branches:
+      - Produccion
+      - develop
+    paths:
+      - 'labflow-frontend/**'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/labflow-frontend
+  NODE_VERSION: '18'
+
+jobs:
+  lint-and-test:
+    name: 🔍 Lint, Format & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: labflow-frontend
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'labflow-frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          NODE_ENV: development
+
+      - name: ESLint - Static code analysis
+        run: npx eslint . --format json --output-file eslint-report.json || true
+        continue-on-error: true
+
+      - name: Upload ESLint results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: labflow-frontend/eslint-report.json
+          category: eslint
+
+      - name: Prettier - Code formatting check
+        run: npx prettier --check . --ignore-path .gitignore
+        continue-on-error: true
+
+      - name: Run unit tests
+        run: npm test -- --watch=false --passWithNoTests
+        continue-on-error: true
+
+      - name: Generate coverage report
+        run: npm test -- --coverage --watch=false --passWithNoTests
+        continue-on-error: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./labflow-frontend/coverage/coverage-final.json
+          flags: frontend
+          name: codecov-frontend
+          fail_ci_if_error: false
+
+      - name: Comment PR with lint results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const eslint = JSON.parse(fs.readFileSync('labflow-frontend/eslint-report.json', 'utf8'));
+              const issues = eslint.reduce((sum, file) => sum + file.messages.length, 0);
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `## 📊 Frontend Code Analysis\n- **ESLint Issues**: ${issues}\n- **Coverage**: See artifacts for detailed report`
+              })
+            } catch (e) {
+              console.log('No ESLint report available');
+            }
+
+  dependency-audit:
+    name: 📦 Dependency Security Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: labflow-frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'labflow-frontend/package-lock.json'
+
+      - name: npm audit - Identify vulnerabilities
+        run: npm audit --audit-level=moderate || true
+        continue-on-error: true
+
+  security:
+    name: 🔒 Security Scans
+    uses: ./.github/workflows/security-scan.yml
+    with:
+      language: 'javascript'
+      dockerfile_path: 'labflow-frontend/Dockerfile'
+
+  build:
+    name: 🏗️ Build & Push Image
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, dependency-audit, security]
+    if: success()
+    defaults:
+      run:
+        working-directory: labflow-frontend
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'labflow-frontend/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          NODE_ENV: production
+
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'http://localhost:8080' }}
+
+      - name: Set up QEMU (multi-platform builds)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: labflow-frontend/
+          file: labflow-frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          build-args: |
+            VITE_API_URL=${{ secrets.VITE_API_URL || 'http://localhost:8080' }}
+
+  deploy-notification:
+    name: 📢 Deployment Coordination
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/Produccion' && success()
+    permissions:
+      contents: read
+      actions: write
+
+    steps:
+      - name: Trigger infrastructure deployment
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          repository: ${{ github.repository_owner }}/labflow-infra
+          event-type: deploy-frontend
+          client-payload: |
+            {
+              "frontend_image": "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}",
+              "branch": "${{ github.ref_name }}",
+              "commit": "${{ github.sha }}",
+              "actor": "${{ github.actor }}"
+            }
+        continue-on-error: true
+
+
