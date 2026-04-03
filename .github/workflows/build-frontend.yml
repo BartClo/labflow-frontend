@@ -3,15 +3,15 @@ name: Build Frontend
 on:
   push:
     branches:
-      - Produccion
-      - develop
+      - main
+      - dev
     paths:
       - 'labflow-frontend/**'
       - '.github/workflows/build-frontend.yml'
   pull_request:
     branches:
-      - Produccion
-      - develop
+      - main
+      - dev
     paths:
       - 'labflow-frontend/**'
 
